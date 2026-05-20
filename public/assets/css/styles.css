@@ -930,6 +930,90 @@ section {
   border-color: var(--signal);
 }
 
+.contact-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 64px;
+  padding-top: 48px;
+  border-top: 1px solid rgba(245, 242, 236, 0.2);
+}
+
+.contact-form label {
+  display: grid;
+  gap: 10px;
+  font-family: "din-2014-rounded-variable", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(245, 242, 236, 0.58);
+}
+
+.contact-form label.full {
+  grid-column: 1 / -1;
+}
+
+.contact-form input,
+.contact-form textarea {
+  width: 100%;
+  border: 1px solid rgba(245, 242, 236, 0.28);
+  background: transparent;
+  color: var(--paper);
+  font: inherit;
+  font-size: 17px;
+  letter-spacing: 0;
+  padding: 16px;
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.contact-form textarea {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.contact-form input:focus,
+.contact-form textarea:focus {
+  border-color: var(--signal);
+  background: rgba(245, 242, 236, 0.05);
+}
+
+.contact-form button {
+  justify-self: start;
+  border: 1px solid var(--paper);
+  background: transparent;
+  color: var(--paper);
+  padding: 14px 22px;
+  font-family: "din-2014-rounded-variable", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.contact-form button:hover,
+.contact-form button:focus-visible {
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+.contact-form button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.form-status {
+  align-self: center;
+  font-family: "din-2014-rounded-variable", sans-serif;
+  font-size: 13px;
+  color: rgba(245, 242, 236, 0.68);
+}
+
 /* ===== FOOTER ===== */
 footer {
   background: var(--ink);
@@ -1121,6 +1205,9 @@ footer a:hover {
   .contact-grid {
     grid-template-columns: 1fr;
     gap: 32px;
+  }
+  .contact-form {
+    grid-template-columns: 1fr;
   }
 }
 

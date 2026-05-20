@@ -80,6 +80,81 @@ document.querySelectorAll('a[href^="#"]').forEach((a) => {
   });
 });
 
+const contactForm = document.getElementById("contact-form");
+const contactStatus = document.getElementById("contact-status");
+
+async function loadSiteContent() {
+  try {
+    const response = await fetch("/api/site");
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (!Array.isArray(data.work) || data.work.length === 0) return;
+
+    const workList = document.getElementById("work-list");
+    workList.innerHTML = "";
+
+    data.work.forEach((item, index) => {
+      const link = document.createElement("a");
+      const num = document.createElement("span");
+      const title = document.createElement("h3");
+      const client = document.createElement("div");
+      const meta = document.createElement("div");
+      const arrow = document.createElement("div");
+
+      link.href = item.imageUrl?.startsWith("http") ? item.imageUrl : "#";
+      link.className = "work-item";
+      num.className = "work-num";
+      title.className = "work-title";
+      client.className = "work-client";
+      meta.className = "work-meta";
+      arrow.className = "work-arrow";
+
+      num.textContent = `— ${String(data.work.length - index).padStart(2, "0")}`;
+      title.textContent = item.title || "Untitled";
+      client.textContent = item.summary || "Open Frame Media";
+      meta.textContent = item.body || "Published work";
+      arrow.textContent = "View →";
+
+      link.append(num, title, client, meta, arrow);
+      workList.appendChild(link);
+    });
+  } catch (error) {
+    // Keep the static work list visible if the API is unavailable.
+  }
+}
+
+if (contactForm) {
+  contactForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submitButton = contactForm.querySelector("button");
+    const formData = Object.fromEntries(new FormData(contactForm));
+
+    submitButton.disabled = true;
+    contactStatus.textContent = "Sending...";
+
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error("The message could not be sent.");
+      }
+
+      contactForm.reset();
+      contactStatus.textContent = "Received. We will reply shortly.";
+    } catch (error) {
+      contactStatus.textContent =
+        "Something went wrong. Please email hello@openframe.media.";
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+}
+
 // Case study video player
 const videoModal = document.getElementById("video-modal");
 const videoTriggers = document.querySelectorAll("[data-video-trigger]");
@@ -178,3 +253,5 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && mobileMenu.classList.contains("open"))
     closeMenu();
 });
+
+loadSiteContent();

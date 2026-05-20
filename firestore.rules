@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    function published() {
+      return resource.data.status == "published";
+    }
+
+    match /contacts/{contactId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if false;
+    }
+
+    match /pages/{pageId} {
+      allow read: if published() || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /posts/{postId} {
+      allow read: if published() || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /work/{workId} {
+      allow read: if published() || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /media/{mediaId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read, update: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow create, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

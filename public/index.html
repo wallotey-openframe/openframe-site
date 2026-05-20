@@ -268,7 +268,7 @@
         <h2 class="sec-title">Featured <em>Films.</em></h2>
       </div>
 
-      <div class="work-list">
+      <div class="work-list" id="work-list">
         <a
           href="https://ik.imagekit.io/teiii/WHO-%20Maternal%20Mental%20Health%20.mp4"
           class="work-item"
@@ -497,11 +497,36 @@
           </div>
         </div>
       </div>
+
+      <form class="contact-form" id="contact-form">
+        <label>
+          Name
+          <input name="name" autocomplete="name" required />
+        </label>
+        <label>
+          Email
+          <input name="email" type="email" autocomplete="email" required />
+        </label>
+        <label>
+          Company
+          <input name="company" autocomplete="organization" />
+        </label>
+        <label>
+          Budget
+          <input name="budget" placeholder="Optional" />
+        </label>
+        <label class="full">
+          Project brief
+          <textarea name="message" required></textarea>
+        </label>
+        <button type="submit">Send brief</button>
+        <p class="form-status" id="contact-status" role="status"></p>
+      </form>
     </section>
 
     <!-- ===== FOOTER ===== -->
     <footer>
-      <div>© 2026 Open Frame Media / Accra</div>
+      <div>© 2026 Open Frame Media / Accra · <a href="/admin.html">Admin</a></div>
     </footer>
 
     <!-- ===== VIDEO MODAL ===== -->

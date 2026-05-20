@@ -1,0 +1,18 @@
+{
+  "name": "open-frame-backend",
+  "description": "Firebase Cloud Functions API for Open Frame Media",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions,firestore,auth,storage,hosting",
+    "deploy": "firebase deploy --only functions",
+    "lint": "node --check index.js"
+  },
+  "dependencies": {
+    "firebase-admin": "latest",
+    "firebase-functions": "latest"
+  },
+  "private": true
+}

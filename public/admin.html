@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Frame Admin</title>
+    <link rel="stylesheet" href="https://use.typekit.net/blo8jyr.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <section class="login-panel" id="login-panel">
+        <p class="eyebrow">Open Frame Media</p>
+        <h1>Admin</h1>
+        <form id="login-form">
+          <label>
+            Email
+            <input type="email" name="email" autocomplete="email" required />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              name="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <button type="submit">Sign in</button>
+          <p class="status" id="login-status" role="status"></p>
+        </form>
+      </section>
+
+      <section class="dashboard hidden" id="dashboard">
+        <header class="admin-header">
+          <div>
+            <p class="eyebrow">Open Frame CMS</p>
+            <h1>Dashboard</h1>
+          </div>
+          <button id="sign-out" type="button">Sign out</button>
+        </header>
+
+        <nav class="tabs" aria-label="Admin sections">
+          <button class="active" data-tab="contacts" type="button">Contacts</button>
+          <button data-tab="cms" type="button">CMS</button>
+          <button data-tab="media" type="button">Uploads</button>
+        </nav>
+
+        <section class="tab active" id="tab-contacts">
+          <div class="section-head">
+            <h2>Contact submissions</h2>
+            <button id="refresh-contacts" type="button">Refresh</button>
+          </div>
+          <div class="list" id="contacts-list"></div>
+        </section>
+
+        <section class="tab" id="tab-cms">
+          <div class="section-head">
+            <h2>CMS editing</h2>
+            <button id="refresh-content" type="button">Refresh</button>
+          </div>
+
+          <form class="editor" id="content-form">
+            <label>
+              Collection
+              <select name="collection">
+                <option value="pages">Pages</option>
+                <option value="posts">Posts</option>
+                <option value="work">Work</option>
+              </select>
+            </label>
+            <label>
+              Slug / ID
+              <input name="id" placeholder="about or maternal-mental-health" required />
+            </label>
+            <label>
+              Title
+              <input name="title" required />
+            </label>
+            <label>
+              Status
+              <select name="status">
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+              </select>
+            </label>
+            <label class="full">
+              Summary
+              <textarea name="summary"></textarea>
+            </label>
+            <label class="full">
+              Body
+              <textarea name="body"></textarea>
+            </label>
+            <label>
+              Image URL
+              <input name="imageUrl" />
+            </label>
+            <label>
+              Sort order
+              <input name="sortOrder" type="number" value="0" />
+            </label>
+            <button type="submit">Save content</button>
+            <p class="status" id="content-status" role="status"></p>
+          </form>
+
+          <div class="content-columns">
+            <div>
+              <h3>Pages</h3>
+              <div class="list compact" id="pages-list"></div>
+            </div>
+            <div>
+              <h3>Posts</h3>
+              <div class="list compact" id="posts-list"></div>
+            </div>
+            <div>
+              <h3>Work</h3>
+              <div class="list compact" id="work-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="tab" id="tab-media">
+          <div class="section-head">
+            <h2>File uploads</h2>
+            <button id="refresh-media" type="button">Refresh</button>
+          </div>
+
+          <form class="editor" id="upload-form">
+            <label class="full">
+              Upload file
+              <input name="file" type="file" required />
+            </label>
+            <button type="submit">Upload</button>
+            <p class="status" id="upload-status" role="status"></p>
+          </form>
+
+          <div class="list media-list" id="media-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/assets/js/admin.js"></script>
+  </body>
+</html>
