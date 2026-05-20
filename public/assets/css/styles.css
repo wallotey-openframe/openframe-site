@@ -1008,10 +1008,23 @@ section {
 }
 
 .form-status {
+  grid-column: 1 / -1;
   align-self: center;
+  margin: 0;
+  min-height: 1.2em;
   font-family: "din-2014-rounded-variable", sans-serif;
   font-size: 13px;
+  letter-spacing: 0.04em;
   color: rgba(245, 242, 236, 0.68);
+  transition: color 0.2s ease;
+}
+
+.form-status.is-success {
+  color: var(--signal);
+}
+
+.form-status.is-error {
+  color: #e26b6b;
 }
 
 /* ===== FOOTER ===== */

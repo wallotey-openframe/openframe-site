@@ -498,7 +498,7 @@
         </div>
       </div>
 
-      <form class="contact-form" id="contact-form">
+      <form class="contact-form" id="contact-form" novalidate>
         <label>
           Name
           <input name="name" autocomplete="name" required />
@@ -520,13 +520,13 @@
           <textarea name="message" required></textarea>
         </label>
         <button type="submit">Send brief</button>
-        <p class="form-status" id="contact-status" role="status"></p>
+        <p class="form-status" id="contact-status" role="status" aria-live="polite"></p>
       </form>
     </section>
 
     <!-- ===== FOOTER ===== -->
     <footer>
-      <div>© 2026 Open Frame Media / Accra · <a href="/admin.html">Admin</a></div>
+      <div>© 2026 Open Frame Media / Accra</div>
     </footer>
 
     <!-- ===== VIDEO MODAL ===== -->

@@ -131,6 +131,7 @@ if (contactForm) {
     const formData = Object.fromEntries(new FormData(contactForm));
 
     submitButton.disabled = true;
+    contactStatus.classList.remove("is-success", "is-error");
     contactStatus.textContent = "Sending...";
 
     try {
@@ -145,8 +146,11 @@ if (contactForm) {
       }
 
       contactForm.reset();
-      contactStatus.textContent = "Received. We will reply shortly.";
+      contactStatus.classList.add("is-success");
+      contactStatus.textContent =
+        "Received. A confirmation is on its way to your inbox.";
     } catch (error) {
+      contactStatus.classList.add("is-error");
       contactStatus.textContent =
         "Something went wrong. Please email hello@openframe.media.";
     } finally {

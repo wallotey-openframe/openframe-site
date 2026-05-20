@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "firebase-admin": "latest",
-    "firebase-functions": "latest"
+    "firebase-functions": "latest",
+    "nodemailer": "^6.9.14"
   },
   "private": true
 }

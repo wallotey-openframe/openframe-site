@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
 const { onRequest } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 
@@ -6,6 +7,20 @@ admin.initializeApp();
 
 const db = admin.firestore();
 const auth = admin.auth();
+
+let mailTransporter = null;
+function getMailer() {
+  if (mailTransporter) return mailTransporter;
+  const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS } = process.env;
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
+  mailTransporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT) || 587,
+    secure: String(SMTP_SECURE).toLowerCase() === "true",
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+  return mailTransporter;
+}
 
 function sendJson(res, status, payload) {
   res.set("Access-Control-Allow-Origin", "*");
@@ -57,44 +72,88 @@ async function getPublishedCollection(name) {
   return snapshot.docs.map(publicData);
 }
 
-async function sendContactEmail(contact) {
-  const apiKey = process.env.RESEND_API_KEY;
+async function sendAdminEmail(contact) {
+  const mailer = getMailer();
   const to = process.env.CONTACT_EMAIL || "hello@openframe.media";
-  const from = process.env.FROM_EMAIL || "Open Frame Media <notifications@openframe.media>";
+  const from = process.env.FROM_EMAIL || `Open Frame Media <${process.env.SMTP_USER}>`;
 
-  if (!apiKey) {
-    logger.info("RESEND_API_KEY not configured; contact email skipped.");
+  if (!mailer) {
+    logger.info("SMTP not configured; admin email skipped.");
     return { skipped: true };
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to,
-      subject: `New project brief from ${contact.name}`,
-      reply_to: contact.email,
-      text: [
-        `Name: ${contact.name}`,
-        `Email: ${contact.email}`,
-        `Company: ${contact.company || "Not provided"}`,
-        `Budget: ${contact.budget || "Not provided"}`,
-        "",
-        contact.message,
-      ].join("\n"),
-    }),
+  return mailer.sendMail({
+    from,
+    to,
+    replyTo: contact.email,
+    subject: `New project brief from ${contact.name}`,
+    text: [
+      `Name: ${contact.name}`,
+      `Email: ${contact.email}`,
+      `Company: ${contact.company || "Not provided"}`,
+      `Budget: ${contact.budget || "Not provided"}`,
+      "",
+      contact.message,
+    ].join("\n"),
   });
+}
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Email provider failed: ${detail}`);
+async function sendAcknowledgementEmail(contact) {
+  const mailer = getMailer();
+  const from = process.env.FROM_EMAIL || `Open Frame Media <${process.env.SMTP_USER}>`;
+
+  if (!mailer) {
+    logger.info("SMTP not configured; acknowledgement email skipped.");
+    return { skipped: true };
   }
 
-  return response.json();
+  return mailer.sendMail({
+    from,
+    to: contact.email,
+    subject: "We received your brief — Open Frame Media",
+    text: [
+      `Hi ${contact.name},`,
+      "",
+      "Thanks for sending your brief to Open Frame Media. We've received it and will get back to you shortly.",
+      "",
+      "For reference, here is what you sent:",
+      "",
+      contact.message,
+      "",
+      "— Open Frame Media",
+      "Accra, Ghana",
+    ].join("\n"),
+  });
+}
+
+async function sendAdminSms(contact) {
+  const apiKey = process.env.ARKESEL_API_KEY;
+  const sender = process.env.ARKESEL_SENDER_ID || "OpenFrame";
+  const to = process.env.CONTACT_PHONE;
+
+  if (!apiKey || !to) {
+    logger.info("Arkesel not configured; admin SMS skipped.");
+    return { skipped: true };
+  }
+
+  const message = `New brief from ${contact.name} (${contact.email})${
+    contact.company ? ` @ ${contact.company}` : ""
+  }: ${contact.message.slice(0, 200)}`;
+
+  const params = new URLSearchParams({
+    action: "send-sms",
+    api_key: apiKey,
+    to,
+    from: sender,
+    sms: message,
+  });
+
+  const response = await fetch(`https://sms.arkesel.com/sms/api?${params.toString()}`);
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Arkesel SMS failed: ${detail}`);
+  }
+  return response.json().catch(() => ({ ok: true }));
 }
 
 async function handleContact(req, res) {
@@ -121,11 +180,27 @@ async function handleContact(req, res) {
 
   const docRef = await db.collection("contacts").add(contact);
 
-  try {
-    await sendContactEmail(contact);
-  } catch (error) {
-    logger.error("Contact email failed", error);
-    await docRef.update({ emailError: error.message });
+  const [adminEmail, adminSms, ack] = await Promise.allSettled([
+    sendAdminEmail(contact),
+    sendAdminSms(contact),
+    sendAcknowledgementEmail(contact),
+  ]);
+
+  const errors = {};
+  if (adminEmail.status === "rejected") {
+    logger.error("Admin email failed", adminEmail.reason);
+    errors.adminEmailError = adminEmail.reason?.message || String(adminEmail.reason);
+  }
+  if (adminSms.status === "rejected") {
+    logger.error("Admin SMS failed", adminSms.reason);
+    errors.adminSmsError = adminSms.reason?.message || String(adminSms.reason);
+  }
+  if (ack.status === "rejected") {
+    logger.error("Acknowledgement email failed", ack.reason);
+    errors.acknowledgementError = ack.reason?.message || String(ack.reason);
+  }
+  if (Object.keys(errors).length) {
+    await docRef.update(errors);
   }
 
   return sendJson(res, 201, { ok: true, id: docRef.id });
