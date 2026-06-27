@@ -15,7 +15,7 @@ concurrency:
 jobs:
   preview:
     runs-on: ubuntu-latest
-    # Don't run for PRs from forks — they can't read secrets, so the deploy would fail.
+    # Skip PRs from forks — they can't read repository secrets.
     if: github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
 
@@ -25,9 +25,23 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: Check that FIREBASE_SERVICE_ACCOUNT is configured
+        id: check
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set; skipping preview deploy. See README → Continuous Deployment for setup."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.check.outputs.proceed == 'true'
 
       - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: steps.check.outputs.proceed == 'true'
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
