@@ -515,22 +515,17 @@ section {
   border-top: 0;
   overflow: hidden;
   max-height: 0;
-  transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.work-list-extra[hidden] {
-  display: block; /* override default to allow animated collapse */
-  max-height: 0;
   opacity: 0;
   pointer-events: none;
-  visibility: hidden;
+  transition:
+    max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.3s ease 0.1s;
 }
 
 .work-list-extra.is-open {
   max-height: 6000px;
   opacity: 1;
   pointer-events: auto;
-  visibility: visible;
 }
 
 .work-list-extra .work-item {

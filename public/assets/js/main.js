@@ -182,7 +182,6 @@ if (workMoreButton && workListExtraEl) {
   workMoreButton.addEventListener("click", () => {
     const isOpen = workListExtraEl.classList.toggle("is-open");
     workMoreButton.setAttribute("aria-expanded", String(isOpen));
-    workListExtraEl.toggleAttribute("hidden", !isOpen);
     if (workMoreLabel) {
       workMoreLabel.textContent = isOpen ? "Show less" : "More films";
     }
