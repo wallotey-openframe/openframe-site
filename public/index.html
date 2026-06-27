@@ -245,22 +245,6 @@
       </div>
     </header>
 
-    <!-- ===== MARQUEE ===== -->
-    <div class="marquee">
-      <div class="marquee-track">
-        <span
-          >A studio, not an agency. <span class="dot"></span> Brand films made
-          with intentionality. <span class="dot"></span> Sincere lens, refined
-          cut. <span class="dot"></span> Documentaries that live.
-          <span class="dot"></span> A studio, not an agency.
-          <span class="dot"></span> Brand films made with intentionality.
-          <span class="dot"></span> Sincere lens, refined cut.
-          <span class="dot"></span> Documentaries that live.
-          <span class="dot"></span
-        ></span>
-      </div>
-    </div>
-
     <!-- ===== WORK ===== -->
     <section class="work" id="work">
       <div class="sec-eyebrow">
@@ -279,7 +263,7 @@
           data-video-meta-right="Delivered / 2026"
           data-video-desc="Maternal Mental Health (MMH) is fundamental to the well-being of females, families, communities, and the nation. Ensuring that every woman enjoys good mental health throughout pregnancy, childbirth, and the postpartum period is not only a public health obligation, but also an investment in Ghana's human capital, social cohesion, and long-term development."
         >
-          <span class="work-num">— 04</span>
+          <span class="work-num">— 05</span>
           <h3 class="work-title">Maternal Mental <em>Health</em></h3>
           <div class="work-client">WHO</div>
           <div class="work-meta">
@@ -298,7 +282,7 @@
           data-video-meta-right="02:21 / 2025"
           data-video-desc="Professor Alexander Debrah, recipient of the 2025 EDCTP Dr Pascoal Mocumbi Prize, is recognized for his outstanding contributions to tropical disease research and capacity building in Africa. His pioneering work in neglected tropical diseases has advanced scientific understanding and improved public health outcomes across the continent."
         >
-          <span class="work-num">— 03</span>
+          <span class="work-num">— 04</span>
           <h3 class="work-title">Dr Pascoal Mocumbi <em>Prize</em></h3>
           <div class="work-client">Global Health EDCTP3</div>
           <div class="work-meta">
@@ -317,7 +301,7 @@
           data-video-meta-right="04:22 / 2025"
           data-video-desc="Meet Priscilla and her peers from Kumasi, Ghana, whose STEM education journey through the Ghana Science & Tech Explorer Prize (GSTEP) turned classroom lessons into a life-saving innovation. Together, they developed a device that helps young people cross busy roads safely — a tangible solution that's already protecting lives outside their school."
         >
-          <span class="work-num">— 02</span>
+          <span class="work-num">— 03</span>
           <h3 class="work-title">Impact Generation <em>with GSTEP</em></h3>
           <div class="work-client">Botnar Foundation</div>
           <div class="work-meta">
@@ -336,7 +320,7 @@
           data-video-meta-right="07:44 / 2024"
           data-video-desc="Follow the story of Stanford student and entrepreneur Roman Scott, and how he was able to both contribute to the growth of a business in Ghana and also reconnect with his family's history through a Stanford Seed internship."
         >
-          <span class="work-num">— 01</span>
+          <span class="work-num">— 02</span>
           <h3 class="work-title">Profiles of <em>Promise</em></h3>
           <div class="work-client">Stanford Seed</div>
           <div class="work-meta">
@@ -345,6 +329,43 @@
           </div>
           <div class="work-arrow">View →</div>
         </a>
+      </div>
+
+      <!-- Additional films revealed by the "More films" toggle. Add new work-item
+           anchors here, or publish new entries in the CMS "work" collection. -->
+      <div class="work-list work-list-extra" id="work-list-extra" hidden>
+        <a
+          href="https://ik.imagekit.io/openframe/GCSI-NPC%20CCSE-GBC%20REVISED.mp4"
+          class="work-item"
+          data-video-trigger
+          data-video-title="NPC Peace Message"
+          data-video-kicker="National Peace Council &amp; GCIC UK / Documentary"
+          data-video-meta-left="NPC PEACE MESSAGE"
+          data-video-meta-right="02:51 / 2024"
+          data-video-desc="NPC 2024 Election Address to the Nation."
+        >
+          <span class="work-num">— 01</span>
+          <h3 class="work-title">NPC Peace <em>Message</em></h3>
+          <div class="work-client">National Peace Council &amp; GCIC UK</div>
+          <div class="work-meta">
+            Documentary<br />
+            02:51 / 2024
+          </div>
+          <div class="work-arrow">View →</div>
+        </a>
+      </div>
+
+      <div class="work-more-wrap" id="work-more-wrap" hidden>
+        <button
+          type="button"
+          class="work-more"
+          id="work-more"
+          aria-expanded="false"
+          aria-controls="work-list-extra"
+        >
+          <span class="work-more-label">More films</span>
+          <span class="work-more-icon" aria-hidden="true">↓</span>
+        </button>
       </div>
     </section>
 
@@ -499,6 +520,19 @@
       </div>
 
       <form class="contact-form" id="contact-form" novalidate>
+        <!-- Honeypot: hidden from humans, irresistible to bots. Do not remove. -->
+        <div class="hp-field" aria-hidden="true">
+          <label>
+            Website
+            <input
+              type="text"
+              name="website"
+              tabindex="-1"
+              autocomplete="off"
+            />
+          </label>
+        </div>
+        <input type="hidden" name="ts" id="contact-ts" value="" />
         <label>
           Name
           <input name="name" autocomplete="name" required />
@@ -510,10 +544,6 @@
         <label>
           Company
           <input name="company" autocomplete="organization" />
-        </label>
-        <label>
-          Budget
-          <input name="budget" placeholder="Optional" />
         </label>
         <label class="full">
           Project brief

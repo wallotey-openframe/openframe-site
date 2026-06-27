@@ -510,6 +510,77 @@ section {
   color: var(--signal);
 }
 
+/* ===== MORE FILMS TOGGLE ===== */
+.work-list-extra {
+  border-top: 0;
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.work-list-extra[hidden] {
+  display: block; /* override default to allow animated collapse */
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.work-list-extra.is-open {
+  max-height: 6000px;
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.work-list-extra .work-item {
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  margin-top: -1px; /* collapse adjacent borders */
+}
+
+.work-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 28px 0 0;
+}
+
+.work-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  font-family: "din-2014-rounded-variable", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 14px 22px;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.work-more:hover,
+.work-more:focus-visible {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--paper);
+  outline: none;
+}
+
+.work-more-icon {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.work-more[aria-expanded="true"] .work-more-icon {
+  transform: rotate(180deg);
+}
+
 /* ===== VIDEO PLAYER ===== */
 .video-modal {
   position: fixed;
@@ -937,6 +1008,18 @@ section {
   margin-top: 64px;
   padding-top: 48px;
   border-top: 1px solid rgba(245, 242, 236, 0.2);
+}
+
+/* Honeypot — hidden from humans, present in the DOM for bots */
+.hp-field {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .contact-form label {

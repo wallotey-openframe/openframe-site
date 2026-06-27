@@ -82,47 +82,115 @@ document.querySelectorAll('a[href^="#"]').forEach((a) => {
 
 const contactForm = document.getElementById("contact-form");
 const contactStatus = document.getElementById("contact-status");
+const contactTs = document.getElementById("contact-ts");
+
+// Stamp the form-load time so the function can reject ultra-fast submissions.
+if (contactTs) {
+  contactTs.value = String(Date.now());
+}
+
+const FEATURED_WORK_COUNT = 4;
+
+function buildWorkItem(item, displayNum, totalCount) {
+  const link = document.createElement("a");
+  const num = document.createElement("span");
+  const title = document.createElement("h3");
+  const client = document.createElement("div");
+  const meta = document.createElement("div");
+  const arrow = document.createElement("div");
+
+  link.href = item.imageUrl?.startsWith("http") ? item.imageUrl : "#";
+  link.className = "work-item";
+  num.className = "work-num";
+  title.className = "work-title";
+  client.className = "work-client";
+  meta.className = "work-meta";
+  arrow.className = "work-arrow";
+
+  num.textContent = `— ${String(displayNum).padStart(2, "0")}`;
+  title.textContent = item.title || "Untitled";
+  client.textContent = item.summary || "Open Frame Media";
+  meta.textContent = item.body || "Published work";
+  arrow.textContent = "View →";
+
+  // If the entry has a video URL stored on imageUrl, treat it as a modal trigger
+  // so it slots into the existing video player.
+  if (item.imageUrl?.match(/\.(mp4|mov|webm)$/i)) {
+    link.setAttribute("data-video-trigger", "");
+    link.setAttribute("data-video-title", item.title || "");
+    link.setAttribute("data-video-kicker", item.summary || "");
+    link.setAttribute("data-video-meta-left", item.title || "");
+    link.setAttribute("data-video-meta-right", item.body || "");
+    link.setAttribute("data-video-desc", item.body || "");
+  }
+
+  link.append(num, title, client, meta, arrow);
+  return link;
+}
+
+function updateWorkMoreToggle() {
+  const extra = document.getElementById("work-list-extra");
+  const wrap = document.getElementById("work-more-wrap");
+  if (!extra || !wrap) return;
+  const hasExtras = extra.children.length > 0;
+  wrap.hidden = !hasExtras;
+}
 
 async function loadSiteContent() {
   try {
     const response = await fetch("/api/site");
-    if (!response.ok) return;
+    if (!response.ok) {
+      updateWorkMoreToggle();
+      return;
+    }
 
     const data = await response.json();
-    if (!Array.isArray(data.work) || data.work.length === 0) return;
+    if (!Array.isArray(data.work) || data.work.length === 0) {
+      updateWorkMoreToggle();
+      return;
+    }
 
     const workList = document.getElementById("work-list");
+    const workListExtra = document.getElementById("work-list-extra");
     workList.innerHTML = "";
+    if (workListExtra) workListExtra.innerHTML = "";
 
+    const total = data.work.length;
     data.work.forEach((item, index) => {
-      const link = document.createElement("a");
-      const num = document.createElement("span");
-      const title = document.createElement("h3");
-      const client = document.createElement("div");
-      const meta = document.createElement("div");
-      const arrow = document.createElement("div");
-
-      link.href = item.imageUrl?.startsWith("http") ? item.imageUrl : "#";
-      link.className = "work-item";
-      num.className = "work-num";
-      title.className = "work-title";
-      client.className = "work-client";
-      meta.className = "work-meta";
-      arrow.className = "work-arrow";
-
-      num.textContent = `— ${String(data.work.length - index).padStart(2, "0")}`;
-      title.textContent = item.title || "Untitled";
-      client.textContent = item.summary || "Open Frame Media";
-      meta.textContent = item.body || "Published work";
-      arrow.textContent = "View →";
-
-      link.append(num, title, client, meta, arrow);
-      workList.appendChild(link);
+      const displayNum = total - index;
+      const link = buildWorkItem(item, displayNum, total);
+      if (index < FEATURED_WORK_COUNT || !workListExtra) {
+        workList.appendChild(link);
+      } else {
+        workListExtra.appendChild(link);
+      }
     });
+
+    updateWorkMoreToggle();
   } catch (error) {
     // Keep the static work list visible if the API is unavailable.
+    updateWorkMoreToggle();
   }
 }
+
+// ===== More films toggle =====
+const workMoreButton = document.getElementById("work-more");
+const workMoreLabel = workMoreButton?.querySelector(".work-more-label");
+const workListExtraEl = document.getElementById("work-list-extra");
+
+if (workMoreButton && workListExtraEl) {
+  workMoreButton.addEventListener("click", () => {
+    const isOpen = workListExtraEl.classList.toggle("is-open");
+    workMoreButton.setAttribute("aria-expanded", String(isOpen));
+    workListExtraEl.toggleAttribute("hidden", !isOpen);
+    if (workMoreLabel) {
+      workMoreLabel.textContent = isOpen ? "Show less" : "More films";
+    }
+  });
+}
+
+// Update toggle visibility on initial load (in case the user has hardcoded extras).
+updateWorkMoreToggle();
 
 if (contactForm) {
   contactForm.addEventListener("submit", async (event) => {
@@ -161,7 +229,6 @@ if (contactForm) {
 
 // Case study video player
 const videoModal = document.getElementById("video-modal");
-const videoTriggers = document.querySelectorAll("[data-video-trigger]");
 const videoClose = document.querySelector(".video-modal-close");
 const caseVideo = document.getElementById("case-video");
 const videoKicker = document.querySelector(".video-player-kicker");
@@ -211,11 +278,12 @@ document
     videoFrame.classList.toggle("desc-visible");
   });
 
-videoTriggers.forEach((trigger) => {
-  trigger.addEventListener("click", (e) => {
-    e.preventDefault();
-    openVideo(trigger);
-  });
+// Delegated so dynamically-added items (CMS, "More films" reveal) work too.
+document.addEventListener("click", (e) => {
+  const trigger = e.target.closest("[data-video-trigger]");
+  if (!trigger) return;
+  e.preventDefault();
+  openVideo(trigger);
 });
 
 videoClose.addEventListener("click", closeVideo);

@@ -1,0 +1,36 @@
+name: Hosting preview (PR)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "public/**"
+      - "firebase.json"
+      - ".github/workflows/preview.yml"
+
+concurrency:
+  group: firebase-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    # Don't run for PRs from forks — they can't read secrets, so the deploy would fail.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 10
+
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: openframe-media
+          channelId: "pr-${{ github.event.pull_request.number }}"
+          expires: 7d
