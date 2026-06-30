@@ -470,8 +470,10 @@ async function bootstrapAlreadyUsed() {
   // Migration path: project may already have admins from before this lockdown.
   // Sweep auth — if any user has the admin claim, set the flag and refuse.
   let pageToken;
-  do {
-    const result = await auth.listUsers(1000, pageToken);
+  while (true) {
+    const result = pageToken
+      ? await auth.listUsers(1000, pageToken)
+      : await auth.listUsers(1000);
     if (result.users.some((u) => u.customClaims?.admin === true)) {
       await db.collection("bootstrap").doc("used").set({
         at: admin.firestore.FieldValue.serverTimestamp(),
@@ -480,10 +482,9 @@ async function bootstrapAlreadyUsed() {
       });
       return true;
     }
+    if (!result.pageToken) return false;
     pageToken = result.pageToken;
-  } while (pageToken);
-
-  return false;
+  }
 }
 
 async function handleBootstrapAdmin(req, res) {
@@ -535,17 +536,17 @@ exports.api = onRequest({ region: "us-central1" }, async (req, res) => {
   const route = parts[0] || "site";
 
   try {
-    if (route === "contact") return handleContact(req, res);
-    if (route === "page" && parts[1]) return handlePage(req, res, parts[1]);
-    if (route === "posts") return handleCollection(req, res, "posts");
-    if (route === "work") return handleCollection(req, res, "work");
-    if (route === "site") return handleSite(req, res);
-    if (route === "bootstrap-admin") return handleBootstrapAdmin(req, res);
-    if (route === "admin" && parts[1] === "users") return handleAdminUsers(req, res, parts);
+    if (route === "contact") return await handleContact(req, res);
+    if (route === "page" && parts[1]) return await handlePage(req, res, parts[1]);
+    if (route === "posts") return await handleCollection(req, res, "posts");
+    if (route === "work") return await handleCollection(req, res, "work");
+    if (route === "site") return await handleSite(req, res);
+    if (route === "bootstrap-admin") return await handleBootstrapAdmin(req, res);
+    if (route === "admin" && parts[1] === "users") return await handleAdminUsers(req, res, parts);
 
     return sendJson(res, 404, { error: "API route not found" });
   } catch (error) {
-    logger.error("API error", error);
-    return sendJson(res, 500, { error: "Internal server error" });
+    logger.error("API error", { route, message: error?.message, stack: error?.stack });
+    return sendJson(res, 500, { error: error?.message || "Internal server error" });
   }
 });
