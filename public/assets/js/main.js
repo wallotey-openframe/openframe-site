@@ -59,16 +59,6 @@ window.addEventListener(
   { passive: true },
 );
 
-// Nudge marquee speed based on hover (subtle delight)
-const marquee = document.querySelector(".marquee-track");
-const marqueeWrap = document.querySelector(".marquee");
-marqueeWrap.addEventListener("mouseenter", () => {
-  marquee.style.animationPlayState = "paused";
-});
-marqueeWrap.addEventListener("mouseleave", () => {
-  marquee.style.animationPlayState = "running";
-});
-
 // Smooth scroll already handled by CSS, but make sure
 document.querySelectorAll('a[href^="#"]').forEach((a) => {
   a.addEventListener("click", (e) => {
