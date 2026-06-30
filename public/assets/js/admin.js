@@ -53,6 +53,7 @@ const appShell = $("#app-shell");
 const loginForm = $("#login-form");
 const loginStatus = $("#login-status");
 const togglePassword = $("#toggle-password");
+const themeToggle = $("#theme-toggle");
 
 const sidebar = $("#sidebar");
 const sidebarNav = $("#sidebar-nav");
@@ -338,6 +339,102 @@ async function authFetch(path, opts = {}) {
       ...(opts.headers || {}),
     },
   });
+}
+
+/* =========================================================================
+   THEME (light / dark)
+   ========================================================================= */
+function applyTheme(theme) {
+  if (theme === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+  themeToggle?.setAttribute(
+    "aria-label",
+    theme === "dark" ? "Switch to light mode" : "Switch to dark mode",
+  );
+}
+
+(function initTheme() {
+  let saved;
+  try {
+    saved = localStorage.getItem("of:admin-theme");
+  } catch {}
+  if (saved === "light" || saved === "dark") {
+    applyTheme(saved);
+    return;
+  }
+  // First visit — honour the OS preference.
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  applyTheme(prefersDark ? "dark" : "light");
+})();
+
+themeToggle?.addEventListener("click", () => {
+  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try {
+    localStorage.setItem("of:admin-theme", next);
+  } catch {}
+});
+
+/* =========================================================================
+   MARKDOWN EDITOR — Edit / Split / Preview tabs + live render
+   ========================================================================= */
+const bodyTextarea = $("#body-textarea");
+const bodyPreview = $("#body-preview");
+const mdEditor = $("#md-editor");
+const mdPanes = mdEditor?.querySelector(".md-panes");
+
+function renderBodyPreview() {
+  if (!bodyTextarea || !bodyPreview) return;
+  const value = bodyTextarea.value.trim();
+  if (!value) {
+    bodyPreview.innerHTML = "";
+    bodyPreview.appendChild(
+      el("p", { class: "md-preview-empty", text: "Nothing to preview yet." }),
+    );
+    return;
+  }
+  if (typeof marked === "undefined") {
+    bodyPreview.textContent = value;
+    return;
+  }
+  try {
+    bodyPreview.innerHTML = marked.parse(value, { breaks: true, gfm: true });
+  } catch (err) {
+    bodyPreview.textContent = `Preview error: ${err.message}`;
+  }
+}
+
+function setMdMode(mode) {
+  if (!mdPanes) return;
+  mdPanes.dataset.mode = mode;
+  mdEditor.querySelectorAll(".md-tab").forEach((btn) => {
+    const isActive = btn.dataset.md === mode;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  try {
+    localStorage.setItem("of:admin-md-mode", mode);
+  } catch {}
+  if (mode !== "edit") renderBodyPreview();
+}
+
+if (mdEditor) {
+  mdEditor.querySelectorAll(".md-tab").forEach((btn) => {
+    btn.addEventListener("click", () => setMdMode(btn.dataset.md));
+  });
+  bodyTextarea?.addEventListener("input", () => {
+    if (mdPanes?.dataset.mode !== "edit") renderBodyPreview();
+  });
+  // Restore previous mode (default to edit)
+  let savedMode = "edit";
+  try {
+    const saved = localStorage.getItem("of:admin-md-mode");
+    if (saved === "split" || saved === "preview") savedMode = saved;
+  } catch {}
+  setMdMode(savedMode);
 }
 
 /* =========================================================================
@@ -950,6 +1047,7 @@ function loadIntoEditor(snap, collectionName) {
   contentForm.sortOrder.value = data.sortOrder ?? 0;
   editorMode.textContent = `Editing ${collectionName} / ${snap.id}`;
   contentForm.dataset.touchedSlug = "1"; // don't auto-fill slug from title
+  renderBodyPreview();
   contentForm.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1004,6 +1102,7 @@ function resetEditor() {
   contentForm.sortOrder.value = 0;
   editorMode.textContent = "New entry";
   delete contentForm.dataset.touchedSlug;
+  renderBodyPreview();
 }
 
 clearFormBtn.addEventListener("click", resetEditor);
