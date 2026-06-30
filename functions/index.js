@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const { onRequest } = require("firebase-functions/v2/https");
@@ -7,6 +8,51 @@ admin.initializeApp();
 
 const db = admin.firestore();
 const auth = admin.auth();
+
+/* =========================================================================
+   RATE LIMITER — per-IP sliding window for /api/contact
+   ========================================================================= */
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const RATE_LIMIT_MAX = 5;
+
+function getClientIp(req) {
+  const forwarded = req.get("x-forwarded-for") || "";
+  const first = forwarded.split(",")[0].trim();
+  return first || req.ip || "";
+}
+
+function hashIp(ip) {
+  // Truncated SHA-256 — we never store raw IPs.
+  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32);
+}
+
+async function checkRateLimit(ip) {
+  if (!ip) return { allowed: true }; // unknowable IP → don't block
+  const docRef = db.collection("rate_limits").doc(`contact_${hashIp(ip)}`);
+  const now = Date.now();
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+    let data = snap.exists ? snap.data() : { count: 0, windowStart: 0 };
+    if (now - (data.windowStart || 0) > RATE_LIMIT_WINDOW_MS) {
+      data = { count: 1, windowStart: now };
+    } else {
+      data.count = (data.count || 0) + 1;
+    }
+    // Always persist — even when blocked — so floods don't reset the counter.
+    tx.set(docRef, {
+      count: data.count,
+      windowStart: data.windowStart,
+      // ttl field — enable Firestore TTL on this field in the console to auto-purge.
+      ttl: new Date(now + 24 * 60 * 60 * 1000),
+    });
+    if (data.count > RATE_LIMIT_MAX) {
+      const retryAfterMs = data.windowStart + RATE_LIMIT_WINDOW_MS - now;
+      return { allowed: false, retryAfter: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
+    }
+    return { allowed: true };
+  });
+}
 
 let mailTransporter = null;
 function getMailer() {
@@ -172,16 +218,29 @@ async function handleContact(req, res) {
   const elapsed = formLoadedAt > 0 ? Date.now() - formLoadedAt : Number.POSITIVE_INFINITY;
   const tooFast = elapsed < MIN_FORM_FILL_MS;
 
+  const ip = getClientIp(req);
+
   if (honeypot || tooFast) {
     logger.info("Honeypot triggered", {
       honeypotFilled: Boolean(honeypot),
       tooFast,
       elapsedMs: Number.isFinite(elapsed) ? elapsed : null,
       userAgent: req.get("user-agent") || "",
-      ip: req.get("x-forwarded-for") || req.ip || "",
+      ip,
     });
     // Pretend everything is fine — bots shouldn't learn they were caught.
     return sendJson(res, 201, { ok: true, id: "filtered" });
+  }
+
+  // ----- Rate limit: 5 submissions / hour / IP -----
+  const rate = await checkRateLimit(ip);
+  if (!rate.allowed) {
+    logger.info("Rate limit hit", { ip, retryAfter: rate.retryAfter });
+    res.set("Retry-After", String(rate.retryAfter));
+    const mins = Math.ceil(rate.retryAfter / 60);
+    return sendJson(res, 429, {
+      error: `Too many submissions. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`,
+    });
   }
 
   const contact = {
@@ -403,6 +462,30 @@ async function handleAdminUsers(req, res, parts) {
   return sendJson(res, 404, { error: "Admin sub-route not found" });
 }
 
+async function bootstrapAlreadyUsed() {
+  // Fast path: persisted flag.
+  const flag = await db.collection("bootstrap").doc("used").get();
+  if (flag.exists) return true;
+
+  // Migration path: project may already have admins from before this lockdown.
+  // Sweep auth — if any user has the admin claim, set the flag and refuse.
+  let pageToken;
+  do {
+    const result = await auth.listUsers(1000, pageToken);
+    if (result.users.some((u) => u.customClaims?.admin === true)) {
+      await db.collection("bootstrap").doc("used").set({
+        at: admin.firestore.FieldValue.serverTimestamp(),
+        by: "migration",
+        note: "Auto-set because admin users already existed at first lockdown check.",
+      });
+      return true;
+    }
+    pageToken = result.pageToken;
+  } while (pageToken);
+
+  return false;
+}
+
 async function handleBootstrapAdmin(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed" });
@@ -415,6 +498,13 @@ async function handleBootstrapAdmin(req, res) {
     return sendJson(res, 403, { error: "Bootstrap key rejected" });
   }
 
+  if (await bootstrapAlreadyUsed()) {
+    return sendJson(res, 403, {
+      error:
+        "Bootstrap is closed. An admin already exists — sign in and invite new admins from the dashboard.",
+    });
+  }
+
   const body = parseBody(req);
   const email = cleanText(body.email, 160).toLowerCase();
 
@@ -424,6 +514,13 @@ async function handleBootstrapAdmin(req, res) {
 
   const user = await auth.getUserByEmail(email);
   await auth.setCustomUserClaims(user.uid, { admin: true });
+
+  // Mark bootstrap closed so this endpoint refuses every future call.
+  await db.collection("bootstrap").doc("used").set({
+    at: admin.firestore.FieldValue.serverTimestamp(),
+    by: email,
+    uid: user.uid,
+  });
 
   return sendJson(res, 200, { ok: true, uid: user.uid, email });
 }
