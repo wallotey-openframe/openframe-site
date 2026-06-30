@@ -134,24 +134,24 @@ async function loadSiteContent() {
   try {
     const response = await fetch("/api/site");
     if (!response.ok) {
+      // API broken — keep static fallback rendered in HTML.
       updateWorkMoreToggle();
       return;
     }
 
     const data = await response.json();
-    if (!Array.isArray(data.work) || data.work.length === 0) {
-      updateWorkMoreToggle();
-      return;
-    }
+    const works = Array.isArray(data.work) ? data.work : [];
 
+    // CMS is the source of truth once the API responds. If it returns 0,
+    // that's an intentional "everything unpublished" state — respect it.
     const workList = document.getElementById("work-list");
     const workListExtra = document.getElementById("work-list-extra");
     if (!workList) return;
     workList.innerHTML = "";
     if (workListExtra) workListExtra.innerHTML = "";
 
-    const total = data.work.length;
-    data.work.forEach((item, index) => {
+    const total = works.length;
+    works.forEach((item, index) => {
       const displayNum = total - index;
       const link = buildWorkItem(item, displayNum, total);
       if (index < FEATURED_WORK_COUNT || !workListExtra) {
@@ -163,7 +163,7 @@ async function loadSiteContent() {
 
     updateWorkMoreToggle();
   } catch (error) {
-    // Keep the static work list visible if the API is unavailable.
+    // Network error — keep static fallback.
     updateWorkMoreToggle();
   }
 }

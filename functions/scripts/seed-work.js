@@ -55,6 +55,15 @@ const FILMS = [
       "https://ik.imagekit.io/teiii/Profiles%20of%20Promise_%20Back%20to%20My%20Roots.mp4",
     sortOrder: 4,
   },
+  {
+    id: "npc-peace-message",
+    title: "NPC Peace Message",
+    summary: "National Peace Council & GCIC UK",
+    body: "Documentary / 02:51 / 2024",
+    imageUrl:
+      "https://ik.imagekit.io/openframe/GCSI-NPC%20CCSE-GBC%20REVISED.mp4",
+    sortOrder: 5,
+  },
 ];
 
 const PLACEHOLDER = {

@@ -13,10 +13,16 @@
           "functionId": "api",
           "region": "us-central1"
         }
-      },
+      }
+    ],
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "headers": [
       {
-        "source": "**",
-        "destination": "/index.html"
+        "source": "/404.html",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-store" }
+        ]
       }
     ]
   },
