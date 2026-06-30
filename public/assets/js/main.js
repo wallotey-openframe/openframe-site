@@ -179,11 +179,28 @@ const workMoreLabel = workMoreButton?.querySelector(".work-more-label");
 const workListExtraEl = document.getElementById("work-list-extra");
 
 if (workMoreButton && workListExtraEl) {
+  // Initial collapsed state — inline styles win over any CSS cascade quirk.
+  workListExtraEl.style.maxHeight = "0px";
+  workListExtraEl.style.overflow = "hidden";
+
   workMoreButton.addEventListener("click", () => {
     const isOpen = workListExtraEl.classList.toggle("is-open");
     workMoreButton.setAttribute("aria-expanded", String(isOpen));
+    if (isOpen) {
+      // Expand to actual content height (including any margin/padding).
+      workListExtraEl.style.maxHeight = workListExtraEl.scrollHeight + "px";
+    } else {
+      workListExtraEl.style.maxHeight = "0px";
+    }
     if (workMoreLabel) {
       workMoreLabel.textContent = isOpen ? "Show less" : "More films";
+    }
+  });
+
+  // Re-measure on viewport resize while open (responsive layouts).
+  window.addEventListener("resize", () => {
+    if (workListExtraEl.classList.contains("is-open")) {
+      workListExtraEl.style.maxHeight = workListExtraEl.scrollHeight + "px";
     }
   });
 }

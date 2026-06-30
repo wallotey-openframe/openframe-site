@@ -511,10 +511,10 @@ section {
 }
 
 /* ===== MORE FILMS TOGGLE ===== */
+/* max-height is driven by JS (set inline from scrollHeight) so we don't
+   fight any CSS cascade. We only animate it from here. */
 .work-list-extra {
   border-top: 0;
-  overflow: hidden;
-  max-height: 0;
   opacity: 0;
   pointer-events: none;
   transition:
@@ -523,7 +523,6 @@ section {
 }
 
 .work-list-extra.is-open {
-  max-height: 6000px;
   opacity: 1;
   pointer-events: auto;
 }
