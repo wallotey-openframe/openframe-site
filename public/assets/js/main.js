@@ -41,23 +41,27 @@ if (heroFrames.length === 2) {
 
     activeHeroFrame = nextFrame;
 
-    heroCaption.classList.add("is-fading");
-    setTimeout(() => {
-      heroCaption.textContent = heroCaptions[heroImageIndex];
-      heroCaption.classList.remove("is-fading");
-    }, 500);
+    if (heroCaption) {
+      heroCaption.classList.add("is-fading");
+      setTimeout(() => {
+        heroCaption.textContent = heroCaptions[heroImageIndex];
+        heroCaption.classList.remove("is-fading");
+      }, 500);
+    }
   }, 6500);
 }
 
 // Nav background on scroll
 const nav = document.querySelector(".site-nav");
-window.addEventListener(
-  "scroll",
-  () => {
-    nav.classList.toggle("scrolled", window.scrollY > 40);
-  },
-  { passive: true },
-);
+if (nav) {
+  window.addEventListener(
+    "scroll",
+    () => {
+      nav.classList.toggle("scrolled", window.scrollY > 40);
+    },
+    { passive: true },
+  );
+}
 
 // Smooth scroll already handled by CSS, but make sure
 document.querySelectorAll('a[href^="#"]').forEach((a) => {
@@ -142,6 +146,7 @@ async function loadSiteContent() {
 
     const workList = document.getElementById("work-list");
     const workListExtra = document.getElementById("work-list-extra");
+    if (!workList) return;
     workList.innerHTML = "";
     if (workListExtra) workListExtra.innerHTML = "";
 
@@ -248,15 +253,16 @@ const videoOverlayText = document.getElementById(
 const videoDescMobile = document.getElementById("video-desc-mobile");
 
 function openVideo(trigger) {
+  if (!videoModal || !caseVideo) return;
   const videoSrc = trigger.getAttribute("href");
-  videoKicker.textContent = trigger.dataset.videoKicker;
-  videoTitle.textContent = trigger.dataset.videoTitle;
-  videoMetaLeft.textContent = trigger.dataset.videoMetaLeft;
-  videoMetaRight.textContent = trigger.dataset.videoMetaRight;
+  if (videoKicker) videoKicker.textContent = trigger.dataset.videoKicker;
+  if (videoTitle) videoTitle.textContent = trigger.dataset.videoTitle;
+  if (videoMetaLeft) videoMetaLeft.textContent = trigger.dataset.videoMetaLeft;
+  if (videoMetaRight) videoMetaRight.textContent = trigger.dataset.videoMetaRight;
   const desc = trigger.dataset.videoDesc || "";
-  videoOverlayText.textContent = desc;
-  videoDescMobile.textContent = desc;
-  videoFrame.classList.remove("desc-visible");
+  if (videoOverlayText) videoOverlayText.textContent = desc;
+  if (videoDescMobile) videoDescMobile.textContent = desc;
+  videoFrame?.classList.remove("desc-visible");
 
   if (caseVideo.getAttribute("src") !== videoSrc) {
     caseVideo.setAttribute("src", videoSrc);
@@ -270,33 +276,36 @@ function openVideo(trigger) {
 }
 
 function closeVideo() {
-  videoModal.classList.remove("open");
-  videoFrame.classList.remove("desc-visible");
-  caseVideo.pause();
+  videoModal?.classList.remove("open");
+  videoFrame?.classList.remove("desc-visible");
+  caseVideo?.pause();
   document.body.style.overflow = "";
 }
 
 // Tap-to-toggle overlay on touch devices
-document
-  .getElementById("video-frame-overlay")
-  .addEventListener("click", (e) => {
+const videoFrameOverlay = document.getElementById("video-frame-overlay");
+if (videoFrameOverlay && videoFrame) {
+  videoFrameOverlay.addEventListener("click", (e) => {
     e.stopPropagation();
     videoFrame.classList.toggle("desc-visible");
   });
+}
 
 // Delegated so dynamically-added items (CMS, "More films" reveal) work too.
-document.addEventListener("click", (e) => {
-  const trigger = e.target.closest("[data-video-trigger]");
-  if (!trigger) return;
-  e.preventDefault();
-  openVideo(trigger);
-});
+if (videoModal) {
+  document.addEventListener("click", (e) => {
+    const trigger = e.target.closest("[data-video-trigger]");
+    if (!trigger) return;
+    e.preventDefault();
+    openVideo(trigger);
+  });
 
-videoClose.addEventListener("click", closeVideo);
+  videoModal.addEventListener("click", (e) => {
+    if (e.target === videoModal) closeVideo();
+  });
+}
 
-videoModal.addEventListener("click", (e) => {
-  if (e.target === videoModal) closeVideo();
-});
+videoClose?.addEventListener("click", closeVideo);
 
 // Mobile menu toggle
 const navToggle = document.querySelector(".nav-toggle");
@@ -304,32 +313,33 @@ const mobileMenu = document.getElementById("mobile-menu");
 const mobileClose = document.querySelector(".mobile-menu-close");
 
 function openMenu() {
-  mobileMenu.classList.add("open");
-  navToggle.setAttribute("aria-expanded", "true");
+  mobileMenu?.classList.add("open");
+  navToggle?.setAttribute("aria-expanded", "true");
   document.body.style.overflow = "hidden";
 }
 
 function closeMenu() {
-  mobileMenu.classList.remove("open");
-  navToggle.setAttribute("aria-expanded", "false");
+  mobileMenu?.classList.remove("open");
+  navToggle?.setAttribute("aria-expanded", "false");
   document.body.style.overflow = "";
 }
 
-navToggle.addEventListener("click", () => {
-  mobileMenu.classList.contains("open") ? closeMenu() : openMenu();
-});
+if (navToggle && mobileMenu) {
+  navToggle.addEventListener("click", () => {
+    mobileMenu.classList.contains("open") ? closeMenu() : openMenu();
+  });
 
-mobileClose.addEventListener("click", closeMenu);
+  mobileMenu.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", closeMenu);
+  });
+}
 
-mobileMenu.querySelectorAll("a").forEach((link) => {
-  link.addEventListener("click", closeMenu);
-});
+mobileClose?.addEventListener("click", closeMenu);
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && videoModal.classList.contains("open"))
-    closeVideo();
-  if (e.key === "Escape" && mobileMenu.classList.contains("open"))
-    closeMenu();
+  if (e.key !== "Escape") return;
+  if (videoModal?.classList.contains("open")) closeVideo();
+  if (mobileMenu?.classList.contains("open")) closeMenu();
 });
 
 loadSiteContent();
