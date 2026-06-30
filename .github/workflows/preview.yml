@@ -1,0 +1,50 @@
+name: Hosting preview (PR)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "public/**"
+      - "firebase.json"
+      - ".github/workflows/preview.yml"
+
+concurrency:
+  group: firebase-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    # Skip PRs from forks — they can't read repository secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 10
+
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Check that FIREBASE_SERVICE_ACCOUNT is configured
+        id: check
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set; skipping preview deploy. See README → Continuous Deployment for setup."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.proceed == 'true'
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: steps.check.outputs.proceed == 'true'
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: openframe-media
+          channelId: "pr-${{ github.event.pull_request.number }}"
+          expires: 7d

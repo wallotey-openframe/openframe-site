@@ -49,6 +49,16 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
     }
 
+    // Server-only: rate-limit counters keyed by hashed IP.
+    match /rate_limits/{doc} {
+      allow read, write: if false;
+    }
+
+    // Server-only: marks whether the bootstrap-admin endpoint has been used.
+    match /bootstrap/{doc} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

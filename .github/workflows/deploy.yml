@@ -1,0 +1,106 @@
+name: Deploy to Firebase (production)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "public/**"
+      - "functions/**"
+      - "firebase.json"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "storage.rules"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check that FIREBASE_SERVICE_ACCOUNT is configured
+        id: check
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set; skipping deploy. See README → Continuous Deployment for setup."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.proceed == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.proceed == 'true'
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install function deps
+        if: steps.check.outputs.proceed == 'true'
+        working-directory: functions
+        run: npm ci
+
+      - name: Write functions/.env from secrets
+        if: steps.check.outputs.proceed == 'true'
+        working-directory: functions
+        env:
+          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+          CONTACT_PHONE: ${{ secrets.CONTACT_PHONE }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          ARKESEL_API_KEY: ${{ secrets.ARKESEL_API_KEY }}
+          ARKESEL_SENDER_ID: ${{ secrets.ARKESEL_SENDER_ID }}
+          ADMIN_BOOTSTRAP_KEY: ${{ secrets.ADMIN_BOOTSTRAP_KEY }}
+        run: |
+          {
+            echo "CONTACT_EMAIL=$CONTACT_EMAIL"
+            echo "CONTACT_PHONE=$CONTACT_PHONE"
+            echo "SMTP_HOST=$SMTP_HOST"
+            echo "SMTP_PORT=$SMTP_PORT"
+            echo "SMTP_SECURE=$SMTP_SECURE"
+            echo "SMTP_USER=$SMTP_USER"
+            echo "SMTP_PASS=$SMTP_PASS"
+            echo "FROM_EMAIL=$FROM_EMAIL"
+            echo "ARKESEL_API_KEY=$ARKESEL_API_KEY"
+            echo "ARKESEL_SENDER_ID=$ARKESEL_SENDER_ID"
+            echo "ADMIN_BOOTSTRAP_KEY=$ADMIN_BOOTSTRAP_KEY"
+          } > .env
+
+      - id: auth
+        if: steps.check.outputs.proceed == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.check.outputs.proceed == 'true'
+        with:
+          project_id: openframe-media
+
+      - name: Install Firebase CLI
+        if: steps.check.outputs.proceed == 'true'
+        run: npm install -g firebase-tools@latest
+
+      - name: Deploy hosting, functions, Firestore rules, storage rules
+        if: steps.check.outputs.proceed == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: firebase deploy --project=openframe-media --non-interactive --force

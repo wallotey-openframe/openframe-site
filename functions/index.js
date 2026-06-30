@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const { onRequest } = require("firebase-functions/v2/https");
@@ -7,6 +8,51 @@ admin.initializeApp();
 
 const db = admin.firestore();
 const auth = admin.auth();
+
+/* =========================================================================
+   RATE LIMITER — per-IP sliding window for /api/contact
+   ========================================================================= */
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const RATE_LIMIT_MAX = 5;
+
+function getClientIp(req) {
+  const forwarded = req.get("x-forwarded-for") || "";
+  const first = forwarded.split(",")[0].trim();
+  return first || req.ip || "";
+}
+
+function hashIp(ip) {
+  // Truncated SHA-256 — we never store raw IPs.
+  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32);
+}
+
+async function checkRateLimit(ip) {
+  if (!ip) return { allowed: true }; // unknowable IP → don't block
+  const docRef = db.collection("rate_limits").doc(`contact_${hashIp(ip)}`);
+  const now = Date.now();
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+    let data = snap.exists ? snap.data() : { count: 0, windowStart: 0 };
+    if (now - (data.windowStart || 0) > RATE_LIMIT_WINDOW_MS) {
+      data = { count: 1, windowStart: now };
+    } else {
+      data.count = (data.count || 0) + 1;
+    }
+    // Always persist — even when blocked — so floods don't reset the counter.
+    tx.set(docRef, {
+      count: data.count,
+      windowStart: data.windowStart,
+      // ttl field — enable Firestore TTL on this field in the console to auto-purge.
+      ttl: new Date(now + 24 * 60 * 60 * 1000),
+    });
+    if (data.count > RATE_LIMIT_MAX) {
+      const retryAfterMs = data.windowStart + RATE_LIMIT_WINDOW_MS - now;
+      return { allowed: false, retryAfter: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
+    }
+    return { allowed: true };
+  });
+}
 
 let mailTransporter = null;
 function getMailer() {
@@ -91,7 +137,6 @@ async function sendAdminEmail(contact) {
       `Name: ${contact.name}`,
       `Email: ${contact.email}`,
       `Company: ${contact.company || "Not provided"}`,
-      `Budget: ${contact.budget || "Not provided"}`,
       "",
       contact.message,
     ].join("\n"),
@@ -156,17 +201,52 @@ async function sendAdminSms(contact) {
   return response.json().catch(() => ({ ok: true }));
 }
 
+const MIN_FORM_FILL_MS = 2500; // submissions faster than this are almost certainly bots
+
 async function handleContact(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed" });
   }
 
   const body = parseBody(req);
+
+  // ----- Honeypot: silently drop bot submissions -----
+  // 1. The `website` field is invisible to humans. Any non-empty value = bot.
+  // 2. If the form was submitted within MIN_FORM_FILL_MS, it's almost certainly a bot.
+  const honeypot = typeof body.website === "string" ? body.website.trim() : "";
+  const formLoadedAt = Number(body.ts) || 0;
+  const elapsed = formLoadedAt > 0 ? Date.now() - formLoadedAt : Number.POSITIVE_INFINITY;
+  const tooFast = elapsed < MIN_FORM_FILL_MS;
+
+  const ip = getClientIp(req);
+
+  if (honeypot || tooFast) {
+    logger.info("Honeypot triggered", {
+      honeypotFilled: Boolean(honeypot),
+      tooFast,
+      elapsedMs: Number.isFinite(elapsed) ? elapsed : null,
+      userAgent: req.get("user-agent") || "",
+      ip,
+    });
+    // Pretend everything is fine — bots shouldn't learn they were caught.
+    return sendJson(res, 201, { ok: true, id: "filtered" });
+  }
+
+  // ----- Rate limit: 5 submissions / hour / IP -----
+  const rate = await checkRateLimit(ip);
+  if (!rate.allowed) {
+    logger.info("Rate limit hit", { ip, retryAfter: rate.retryAfter });
+    res.set("Retry-After", String(rate.retryAfter));
+    const mins = Math.ceil(rate.retryAfter / 60);
+    return sendJson(res, 429, {
+      error: `Too many submissions. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`,
+    });
+  }
+
   const contact = {
     name: cleanText(body.name, 120),
     email: cleanText(body.email, 160).toLowerCase(),
     company: cleanText(body.company, 160),
-    budget: cleanText(body.budget, 80),
     message: cleanText(body.message, 4000),
     status: "unread",
     source: "website",
@@ -240,6 +320,173 @@ async function handleSite(req, res) {
   return sendJson(res, 200, { work, posts });
 }
 
+async function verifyAdminCaller(req) {
+  const authz = req.get("authorization") || "";
+  const match = authz.match(/^Bearer (.+)$/i);
+  if (!match) return null;
+  try {
+    const decoded = await auth.verifyIdToken(match[1]);
+    return decoded.admin === true ? decoded : null;
+  } catch (err) {
+    logger.warn("Token verification failed", err.message);
+    return null;
+  }
+}
+
+async function handleAdminUsers(req, res, parts) {
+  const caller = await verifyAdminCaller(req);
+  if (!caller) {
+    return sendJson(res, 401, { error: "Admin authentication required" });
+  }
+
+  // GET /api/admin/users  → list users
+  if (req.method === "GET" && !parts[2]) {
+    const result = await auth.listUsers(1000);
+    const users = result.users.map((u) => ({
+      uid: u.uid,
+      email: u.email || "",
+      displayName: u.displayName || "",
+      disabled: u.disabled,
+      admin: u.customClaims?.admin === true,
+      emailVerified: u.emailVerified,
+      createdAt: u.metadata.creationTime,
+      lastSignInAt: u.metadata.lastSignInTime || null,
+    }));
+    return sendJson(res, 200, { users });
+  }
+
+  const targetUid = parts[2];
+  if (!targetUid) {
+    return sendJson(res, 404, { error: "Not found" });
+  }
+
+  // POST /api/admin/users/:uid/admin  → toggle admin claim
+  if (req.method === "POST" && parts[3] === "admin") {
+    const body = parseBody(req);
+    const grant = body.admin === true;
+    if (!grant && caller.uid === targetUid) {
+      return sendJson(res, 400, { error: "You cannot revoke admin from yourself." });
+    }
+    const target = await auth.getUser(targetUid);
+    const claims = { ...(target.customClaims || {}), admin: grant };
+    if (!grant) delete claims.admin;
+    await auth.setCustomUserClaims(targetUid, claims);
+    return sendJson(res, 200, { ok: true, uid: targetUid, admin: grant });
+  }
+
+  // POST /api/admin/users/:uid/reset  → generate password reset link
+  if (req.method === "POST" && parts[3] === "reset") {
+    const target = await auth.getUser(targetUid);
+    if (!target.email) {
+      return sendJson(res, 400, { error: "User has no email." });
+    }
+    const link = await auth.generatePasswordResetLink(target.email);
+    // Email it via the existing SMTP mailer
+    const mailer = getMailer();
+    if (mailer) {
+      try {
+        await mailer.sendMail({
+          from: process.env.FROM_EMAIL || `Open Frame Media <${process.env.SMTP_USER}>`,
+          to: target.email,
+          subject: "Open Frame Admin — Password reset",
+          text: [
+            `Hi ${target.displayName || target.email},`,
+            "",
+            "An administrator triggered a password reset for your account.",
+            "Click the link below to choose a new password:",
+            "",
+            link,
+            "",
+            "If you didn't expect this, you can ignore this email.",
+          ].join("\n"),
+        });
+      } catch (err) {
+        logger.error("Password reset email failed", err);
+      }
+    }
+    return sendJson(res, 200, { ok: true, link });
+  }
+
+  // POST /api/admin/users/:uid/disable  → toggle disabled
+  if (req.method === "POST" && parts[3] === "disable") {
+    const body = parseBody(req);
+    if (caller.uid === targetUid) {
+      return sendJson(res, 400, { error: "You cannot disable your own account." });
+    }
+    await auth.updateUser(targetUid, { disabled: body.disabled === true });
+    return sendJson(res, 200, { ok: true, uid: targetUid, disabled: body.disabled === true });
+  }
+
+  // POST /api/admin/users/:uid/create  → create new admin user
+  if (req.method === "POST" && targetUid === "create") {
+    const body = parseBody(req);
+    const email = cleanText(body.email, 160).toLowerCase();
+    if (!isEmail(email)) {
+      return sendJson(res, 400, { error: "Valid email required" });
+    }
+    // Reuse the GET path UID position: parts[2] is "create"
+    let user;
+    try {
+      user = await auth.getUserByEmail(email);
+    } catch {
+      user = await auth.createUser({ email });
+    }
+    await auth.setCustomUserClaims(user.uid, {
+      ...(user.customClaims || {}),
+      admin: true,
+    });
+    const link = await auth.generatePasswordResetLink(email);
+    const mailer = getMailer();
+    if (mailer) {
+      try {
+        await mailer.sendMail({
+          from: process.env.FROM_EMAIL || `Open Frame Media <${process.env.SMTP_USER}>`,
+          to: email,
+          subject: "Open Frame Admin — You've been added as an admin",
+          text: [
+            `Hi,`,
+            "",
+            `${caller.email || "An administrator"} added you as an admin on Open Frame Media's CMS.`,
+            "Set your password to sign in:",
+            "",
+            link,
+          ].join("\n"),
+        });
+      } catch (err) {
+        logger.error("Invite email failed", err);
+      }
+    }
+    return sendJson(res, 201, { ok: true, uid: user.uid, email, link });
+  }
+
+  return sendJson(res, 404, { error: "Admin sub-route not found" });
+}
+
+async function bootstrapAlreadyUsed() {
+  // Fast path: persisted flag.
+  const flag = await db.collection("bootstrap").doc("used").get();
+  if (flag.exists) return true;
+
+  // Migration path: project may already have admins from before this lockdown.
+  // Sweep auth — if any user has the admin claim, set the flag and refuse.
+  let pageToken;
+  while (true) {
+    const result = pageToken
+      ? await auth.listUsers(1000, pageToken)
+      : await auth.listUsers(1000);
+    if (result.users.some((u) => u.customClaims?.admin === true)) {
+      await db.collection("bootstrap").doc("used").set({
+        at: admin.firestore.FieldValue.serverTimestamp(),
+        by: "migration",
+        note: "Auto-set because admin users already existed at first lockdown check.",
+      });
+      return true;
+    }
+    if (!result.pageToken) return false;
+    pageToken = result.pageToken;
+  }
+}
+
 async function handleBootstrapAdmin(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed" });
@@ -252,6 +499,13 @@ async function handleBootstrapAdmin(req, res) {
     return sendJson(res, 403, { error: "Bootstrap key rejected" });
   }
 
+  if (await bootstrapAlreadyUsed()) {
+    return sendJson(res, 403, {
+      error:
+        "Bootstrap is closed. An admin already exists — sign in and invite new admins from the dashboard.",
+    });
+  }
+
   const body = parseBody(req);
   const email = cleanText(body.email, 160).toLowerCase();
 
@@ -261,6 +515,13 @@ async function handleBootstrapAdmin(req, res) {
 
   const user = await auth.getUserByEmail(email);
   await auth.setCustomUserClaims(user.uid, { admin: true });
+
+  // Mark bootstrap closed so this endpoint refuses every future call.
+  await db.collection("bootstrap").doc("used").set({
+    at: admin.firestore.FieldValue.serverTimestamp(),
+    by: email,
+    uid: user.uid,
+  });
 
   return sendJson(res, 200, { ok: true, uid: user.uid, email });
 }
@@ -275,16 +536,17 @@ exports.api = onRequest({ region: "us-central1" }, async (req, res) => {
   const route = parts[0] || "site";
 
   try {
-    if (route === "contact") return handleContact(req, res);
-    if (route === "page" && parts[1]) return handlePage(req, res, parts[1]);
-    if (route === "posts") return handleCollection(req, res, "posts");
-    if (route === "work") return handleCollection(req, res, "work");
-    if (route === "site") return handleSite(req, res);
-    if (route === "bootstrap-admin") return handleBootstrapAdmin(req, res);
+    if (route === "contact") return await handleContact(req, res);
+    if (route === "page" && parts[1]) return await handlePage(req, res, parts[1]);
+    if (route === "posts") return await handleCollection(req, res, "posts");
+    if (route === "work") return await handleCollection(req, res, "work");
+    if (route === "site") return await handleSite(req, res);
+    if (route === "bootstrap-admin") return await handleBootstrapAdmin(req, res);
+    if (route === "admin" && parts[1] === "users") return await handleAdminUsers(req, res, parts);
 
     return sendJson(res, 404, { error: "API route not found" });
   } catch (error) {
-    logger.error("API error", error);
-    return sendJson(res, 500, { error: "Internal server error" });
+    logger.error("API error", { route, message: error?.message, stack: error?.stack });
+    return sendJson(res, 500, { error: error?.message || "Internal server error" });
   }
 });

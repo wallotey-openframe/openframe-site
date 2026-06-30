@@ -3,64 +3,270 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Open Frame Admin</title>
+    <title>Open Frame · Admin</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cg fill='%230a0a0a'%3E%3Cpath d='M56.5,151.5H6.7v-49.8C6.7,129.2,29,151.5,56.5,151.5z'/%3E%3Cpath d='M153.5,8.5v49.8c0-27.5-22.3-49.8-49.8-49.8H153.5z'/%3E%3Cpath d='M153.5,101.7v49.8h-49.8C131.2,151.5,153.5,129.2,153.5,101.7z'/%3E%3C/g%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="https://use.typekit.net/blo8jyr.css" />
     <link rel="stylesheet" href="/assets/css/admin.css" />
   </head>
   <body>
-    <main class="admin-shell">
-      <section class="login-panel" id="login-panel">
-        <p class="eyebrow">Open Frame Media</p>
-        <h1>Admin</h1>
-        <form id="login-form">
+    <!-- ===== LOGIN ===== -->
+    <main class="login-shell" id="login-shell">
+      <section class="login-panel">
+        <a href="/" class="brand-mark" aria-label="Open Frame Media">
+          <svg viewBox="0 0 160 160" aria-hidden="true">
+            <g>
+              <path d="M56.5,151.5H6.7v-49.8C6.7,129.2,29,151.5,56.5,151.5z" />
+              <path d="M153.5,8.5v49.8c0-27.5-22.3-49.8-49.8-49.8H153.5z" />
+              <path d="M153.5,101.7v49.8h-49.8C131.2,151.5,153.5,129.2,153.5,101.7z" />
+            </g>
+          </svg>
+        </a>
+        <div>
+          <p class="eyebrow">Open Frame Media</p>
+          <h1>Admin</h1>
+        </div>
+        <form id="login-form" autocomplete="on">
           <label>
             Email
             <input type="email" name="email" autocomplete="email" required />
           </label>
           <label>
             Password
-            <input
-              type="password"
-              name="password"
-              autocomplete="current-password"
-              required
-            />
+            <div class="password-row">
+              <input
+                type="password"
+                name="password"
+                autocomplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                class="ghost"
+                id="toggle-password"
+                aria-label="Show password"
+              >
+                Show
+              </button>
+            </div>
           </label>
           <button type="submit">Sign in</button>
           <p class="status" id="login-status" role="status"></p>
         </form>
       </section>
+    </main>
 
-      <section class="dashboard hidden" id="dashboard">
-        <header class="admin-header">
-          <div>
-            <p class="eyebrow">Open Frame CMS</p>
-            <h1>Dashboard</h1>
-          </div>
-          <button id="sign-out" type="button">Sign out</button>
-        </header>
+    <!-- ===== DASHBOARD ===== -->
+    <div class="app-shell hidden" id="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="Primary">
+        <div class="sidebar-head">
+          <a href="/" class="brand-mark small" aria-label="Open Frame Media">
+            <svg viewBox="0 0 160 160" aria-hidden="true">
+              <g>
+                <path d="M56.5,151.5H6.7v-49.8C6.7,129.2,29,151.5,56.5,151.5z" />
+                <path d="M153.5,8.5v49.8c0-27.5-22.3-49.8-49.8-49.8H153.5z" />
+                <path d="M153.5,101.7v49.8h-49.8C131.2,151.5,153.5,129.2,153.5,101.7z" />
+              </g>
+            </svg>
+          </a>
+          <p class="brand-name">Open Frame<br /><span>Admin</span></p>
+        </div>
 
-        <nav class="tabs" aria-label="Admin sections">
-          <button class="active" data-tab="contacts" type="button">Contacts</button>
-          <button data-tab="cms" type="button">CMS</button>
-          <button data-tab="media" type="button">Uploads</button>
+        <nav class="sidebar-nav" id="sidebar-nav" aria-label="Sections">
+          <button class="nav-item active" data-tab="overview" type="button">
+            <span class="nav-icon" aria-hidden="true">○</span> Overview
+          </button>
+          <button class="nav-item" data-tab="contacts" type="button">
+            <span class="nav-icon" aria-hidden="true">✉</span> Contacts
+            <span class="badge" id="contacts-badge" hidden>0</span>
+          </button>
+          <button class="nav-item" data-tab="cms" type="button">
+            <span class="nav-icon" aria-hidden="true">▤</span> CMS
+          </button>
+          <button class="nav-item" data-tab="media" type="button">
+            <span class="nav-icon" aria-hidden="true">⌗</span> Uploads
+          </button>
+          <button class="nav-item" data-tab="admins" type="button">
+            <span class="nav-icon" aria-hidden="true">◈</span> Admins
+          </button>
         </nav>
 
-        <section class="tab active" id="tab-contacts">
-          <div class="section-head">
-            <h2>Contact submissions</h2>
-            <button id="refresh-contacts" type="button">Refresh</button>
+        <div class="sidebar-foot">
+          <button
+            type="button"
+            class="ghost cmd-launcher"
+            id="open-command"
+            title="Command palette (⌘K)"
+          >
+            <span class="kbd">⌘K</span> Quick actions
+          </button>
+          <div class="user-info">
+            <span class="user-chip" id="user-chip"></span>
+            <button id="sign-out" type="button" class="ghost compact">
+              Sign out
+            </button>
           </div>
-          <div class="list" id="contacts-list"></div>
+        </div>
+      </aside>
+
+      <!-- Mobile top bar -->
+      <header class="mobile-bar">
+        <button
+          type="button"
+          class="ghost compact"
+          id="open-sidebar"
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
+        <span class="brand-name compact">Open Frame Admin</span>
+        <button
+          type="button"
+          class="ghost compact"
+          id="mobile-command"
+          aria-label="Open command palette"
+        >
+          ⌘K
+        </button>
+      </header>
+
+      <main class="content">
+        <!-- ===== OVERVIEW ===== -->
+        <section class="tab active" id="tab-overview">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Today</p>
+              <h2 id="overview-greeting">Welcome back.</h2>
+            </div>
+          </div>
+
+          <div class="stat-grid">
+            <button class="stat-card" data-jump="contacts:unread" type="button">
+              <p class="stat-label">Unread contacts</p>
+              <p class="stat-value" id="stat-unread">—</p>
+              <p class="stat-meta" id="stat-unread-meta">All caught up</p>
+            </button>
+            <button class="stat-card" data-jump="cms:drafts" type="button">
+              <p class="stat-label">Drafts</p>
+              <p class="stat-value" id="stat-drafts">—</p>
+              <p class="stat-meta" id="stat-drafts-meta">Across all CMS</p>
+            </button>
+            <button class="stat-card" data-jump="cms:published" type="button">
+              <p class="stat-label">Published</p>
+              <p class="stat-value" id="stat-published">—</p>
+              <p class="stat-meta" id="stat-published-meta">Live on the site</p>
+            </button>
+            <button class="stat-card" data-jump="media" type="button">
+              <p class="stat-label">Uploads</p>
+              <p class="stat-value" id="stat-media">—</p>
+              <p class="stat-meta" id="stat-media-meta">Total files</p>
+            </button>
+          </div>
+
+          <div class="overview-columns">
+            <section class="card">
+              <div class="card-head">
+                <h3>Recent submissions</h3>
+                <button
+                  type="button"
+                  class="ghost compact"
+                  data-jump="contacts"
+                >
+                  View all
+                </button>
+              </div>
+              <div class="list" id="overview-contacts"></div>
+            </section>
+            <section class="card">
+              <div class="card-head">
+                <h3>Recently edited</h3>
+                <button
+                  type="button"
+                  class="ghost compact"
+                  data-jump="cms"
+                >
+                  Open CMS
+                </button>
+              </div>
+              <div class="list" id="overview-cms"></div>
+            </section>
+          </div>
         </section>
 
-        <section class="tab" id="tab-cms">
+        <!-- ===== CONTACTS ===== -->
+        <section class="tab" id="tab-contacts">
           <div class="section-head">
-            <h2>CMS editing</h2>
-            <button id="refresh-content" type="button">Refresh</button>
+            <h2>Contacts</h2>
+            <div class="section-actions">
+              <input
+                class="search"
+                id="contacts-search"
+                type="search"
+                placeholder="Search name, email, message…"
+                aria-label="Search contacts"
+              />
+              <select id="contacts-filter" aria-label="Filter by status">
+                <option value="all">All</option>
+                <option value="unread">Unread</option>
+                <option value="read">Read</option>
+                <option value="archived">Archived</option>
+              </select>
+              <button id="contacts-export" type="button" class="ghost">
+                Export CSV
+              </button>
+            </div>
           </div>
 
-          <form class="editor" id="content-form">
+          <div class="bulk-bar" id="bulk-bar" hidden>
+            <label class="bulk-select-all">
+              <input type="checkbox" id="bulk-select-all" />
+              <span id="bulk-count">0 selected</span>
+            </label>
+            <div class="bulk-actions">
+              <button type="button" class="ghost" id="bulk-mark-read">
+                Mark read
+              </button>
+              <button type="button" class="ghost" id="bulk-archive">
+                Archive
+              </button>
+              <button type="button" class="danger" id="bulk-delete">
+                Delete
+              </button>
+            </div>
+          </div>
+
+          <div class="list" id="contacts-list" aria-live="polite"></div>
+          <div class="list-footer">
+            <button id="contacts-load-more" type="button" hidden>
+              Load more
+            </button>
+          </div>
+        </section>
+
+        <!-- ===== CMS ===== -->
+        <section class="tab" id="tab-cms">
+          <div class="section-head">
+            <h2>CMS</h2>
+            <div class="section-actions">
+              <input
+                class="search"
+                id="cms-search"
+                type="search"
+                placeholder="Search title or slug…"
+                aria-label="Search CMS"
+              />
+              <button id="new-entry" type="button" class="ghost">
+                + New entry
+              </button>
+            </div>
+          </div>
+
+          <form class="editor card" id="content-form">
+            <p class="editor-mode" id="editor-mode">New entry</p>
             <label>
               Collection
               <select name="collection">
@@ -71,7 +277,11 @@
             </label>
             <label>
               Slug / ID
-              <input name="id" placeholder="about or maternal-mental-health" required />
+              <input
+                name="id"
+                placeholder="about or maternal-mental-health"
+                required
+              />
             </label>
             <label>
               Title
@@ -94,14 +304,22 @@
             </label>
             <label>
               Image URL
-              <input name="imageUrl" />
+              <div class="image-row">
+                <input name="imageUrl" />
+                <button type="button" class="ghost" id="pick-image">
+                  Pick
+                </button>
+              </div>
             </label>
             <label>
               Sort order
               <input name="sortOrder" type="number" value="0" />
             </label>
-            <button type="submit">Save content</button>
-            <p class="status" id="content-status" role="status"></p>
+            <div class="editor-actions full">
+              <button type="submit">Save</button>
+              <button type="button" class="ghost" id="clear-form">Clear</button>
+              <p class="status" id="content-status" role="status"></p>
+            </div>
           </form>
 
           <div class="content-columns">
@@ -120,25 +338,144 @@
           </div>
         </section>
 
+        <!-- ===== UPLOADS ===== -->
         <section class="tab" id="tab-media">
           <div class="section-head">
-            <h2>File uploads</h2>
-            <button id="refresh-media" type="button">Refresh</button>
+            <h2>Uploads</h2>
+            <input
+              class="search"
+              id="media-search"
+              type="search"
+              placeholder="Search file name…"
+              aria-label="Search uploads"
+            />
           </div>
 
-          <form class="editor" id="upload-form">
+          <form class="editor card" id="upload-form">
             <label class="full">
               Upload file
-              <input name="file" type="file" required />
+              <input
+                name="file"
+                type="file"
+                required
+                accept="image/*,video/*,application/pdf"
+              />
             </label>
-            <button type="submit">Upload</button>
-            <p class="status" id="upload-status" role="status"></p>
+            <div class="editor-actions full">
+              <button type="submit">Upload</button>
+              <p class="status" id="upload-status" role="status"></p>
+            </div>
+            <div class="progress full" id="upload-progress" hidden>
+              <div class="progress-bar" id="upload-progress-bar"></div>
+              <span class="progress-label" id="upload-progress-label">0%</span>
+            </div>
           </form>
 
           <div class="list media-list" id="media-list"></div>
         </section>
-      </section>
-    </main>
+
+        <!-- ===== ADMINS ===== -->
+        <section class="tab" id="tab-admins">
+          <div class="section-head">
+            <h2>Admins</h2>
+            <button id="invite-admin" type="button" class="ghost">
+              + Invite admin
+            </button>
+          </div>
+          <p class="hint">
+            Admins can sign in to this dashboard, read every contact submission,
+            and edit all CMS entries. Be selective.
+          </p>
+          <div class="list" id="admins-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ===== IMAGE PICKER ===== -->
+    <div class="dialog" id="image-picker" role="dialog" aria-modal="true" hidden>
+      <div class="dialog-panel">
+        <div class="dialog-head">
+          <h3>Pick an upload</h3>
+          <button
+            type="button"
+            class="ghost"
+            id="image-picker-close"
+            aria-label="Close picker"
+          >
+            Close
+          </button>
+        </div>
+        <div class="list media-list" id="image-picker-list"></div>
+      </div>
+    </div>
+
+    <!-- ===== COMMAND PALETTE ===== -->
+    <div
+      class="dialog command-palette"
+      id="command-palette"
+      role="dialog"
+      aria-modal="true"
+      hidden
+    >
+      <div class="dialog-panel command-panel">
+        <input
+          class="command-input"
+          id="command-input"
+          type="search"
+          placeholder="Type a command, page, contact name…"
+          aria-label="Command palette"
+        />
+        <div class="command-list" id="command-list"></div>
+        <p class="command-hint">
+          <span class="kbd">↑</span><span class="kbd">↓</span> navigate
+          <span class="kbd">↵</span> select <span class="kbd">esc</span> close
+        </p>
+      </div>
+    </div>
+
+    <!-- ===== CONFIRM MODAL ===== -->
+    <div class="dialog" id="confirm-modal" role="dialog" aria-modal="true" hidden>
+      <div class="dialog-panel confirm-panel">
+        <h3 id="confirm-title">Are you sure?</h3>
+        <p id="confirm-body"></p>
+        <label id="confirm-type-wrap" hidden>
+          Type
+          <strong id="confirm-type-word">DELETE</strong>
+          to confirm
+          <input id="confirm-type-input" type="text" autocomplete="off" />
+        </label>
+        <div class="confirm-actions">
+          <button type="button" class="ghost" id="confirm-cancel">
+            Cancel
+          </button>
+          <button type="button" class="danger" id="confirm-go" disabled>
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== INVITE MODAL ===== -->
+    <div class="dialog" id="invite-modal" role="dialog" aria-modal="true" hidden>
+      <div class="dialog-panel confirm-panel">
+        <h3>Invite admin</h3>
+        <p>
+          They'll receive an email with a password-set link. Their account is
+          created automatically if it doesn't exist.
+        </p>
+        <label>
+          Email
+          <input id="invite-email" type="email" autocomplete="off" />
+        </label>
+        <div class="confirm-actions">
+          <button type="button" class="ghost" id="invite-cancel">Cancel</button>
+          <button type="button" id="invite-go">Send invite</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TOAST CONTAINER ===== -->
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
     <script type="module" src="/assets/js/admin.js"></script>
   </body>
