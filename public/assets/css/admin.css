@@ -260,6 +260,67 @@ textarea:focus {
 }
 
 /* =========================================================================
+   ACTIVITY LOG
+   ========================================================================= */
+.activity-item {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--snow);
+  border: 1px solid var(--hairline);
+}
+
+.activity-time {
+  font-size: 12px;
+  color: var(--ash);
+  letter-spacing: 0.03em;
+}
+
+.activity-text strong {
+  font-weight: 600;
+}
+
+.activity-text small {
+  display: block;
+  color: var(--ash);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.activity-verb {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--hairline);
+  color: var(--ash);
+}
+
+.activity-verb.destructive {
+  color: var(--error);
+  border-color: var(--error);
+}
+.activity-verb.create {
+  color: var(--success);
+  border-color: var(--success);
+}
+.activity-verb.update {
+  color: var(--signal);
+  border-color: var(--signal);
+}
+
+@media (max-width: 780px) {
+  .activity-item {
+    grid-template-columns: 1fr;
+  }
+  .activity-time {
+    order: 3;
+  }
+}
+
+/* =========================================================================
    APP SHELL — sidebar + content
    ========================================================================= */
 .app-shell {

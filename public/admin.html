@@ -111,6 +111,9 @@
           <button class="nav-item" data-tab="admins" type="button">
             <span class="nav-icon" aria-hidden="true">◈</span> Admins
           </button>
+          <button class="nav-item" data-tab="activity" type="button">
+            <span class="nav-icon" aria-hidden="true">⟳</span> Activity
+          </button>
         </nav>
 
         <div class="sidebar-foot">
@@ -249,10 +252,11 @@
                 aria-label="Search contacts"
               />
               <select id="contacts-filter" aria-label="Filter by status">
-                <option value="all">All</option>
+                <option value="all">All active</option>
                 <option value="unread">Unread</option>
                 <option value="read">Read</option>
                 <option value="archived">Archived</option>
+                <option value="trashed">Trashed</option>
               </select>
               <button id="contacts-export" type="button" class="ghost">
                 Export CSV
@@ -298,6 +302,12 @@
                 placeholder="Search title or slug…"
                 aria-label="Search CMS"
               />
+              <select id="cms-filter" aria-label="Filter CMS view">
+                <option value="all">All active</option>
+                <option value="drafts">Drafts</option>
+                <option value="published">Published</option>
+                <option value="trashed">Trashed</option>
+              </select>
               <button id="new-entry" type="button" class="ghost">
                 + New entry
               </button>
@@ -417,13 +427,19 @@
         <section class="tab" id="tab-media">
           <div class="section-head">
             <h2>Uploads</h2>
-            <input
-              class="search"
-              id="media-search"
-              type="search"
-              placeholder="Search file name…"
-              aria-label="Search uploads"
-            />
+            <div class="section-actions">
+              <input
+                class="search"
+                id="media-search"
+                type="search"
+                placeholder="Search file name…"
+                aria-label="Search uploads"
+              />
+              <select id="media-filter" aria-label="Filter uploads view">
+                <option value="all">All active</option>
+                <option value="trashed">Trashed</option>
+              </select>
+            </div>
           </div>
 
           <form class="editor card" id="upload-form">
@@ -462,6 +478,30 @@
             and edit all CMS entries. Be selective.
           </p>
           <div class="list" id="admins-list"></div>
+        </section>
+
+        <!-- ===== ACTIVITY ===== -->
+        <section class="tab" id="tab-activity">
+          <div class="section-head">
+            <h2>Activity</h2>
+            <div class="section-actions">
+              <select id="activity-filter" aria-label="Filter activity">
+                <option value="all">All actions</option>
+                <option value="cms">CMS</option>
+                <option value="contacts">Contacts</option>
+                <option value="media">Uploads</option>
+                <option value="admins">Admins</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint">
+            Immutable log of admin actions. Entries can be read but never edited
+            or deleted from this dashboard.
+          </p>
+          <div class="list" id="activity-list"></div>
+          <div class="list-footer">
+            <button id="activity-load-more" type="button" hidden>Load more</button>
+          </div>
         </section>
       </main>
     </div>

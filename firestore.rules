@@ -59,6 +59,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Activity log — admins may read and create, but never update or delete.
+    // Immutable append-only trail so an admin can't cover their own tracks.
+    match /activity/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
