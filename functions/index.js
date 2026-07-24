@@ -115,7 +115,10 @@ async function getPublishedCollection(name) {
     .orderBy("sortOrder", "asc")
     .get();
 
-  return snapshot.docs.map(publicData);
+  // Exclude soft-deleted docs. Firestore's `where("deletedAt","==",null)` does
+  // NOT match documents missing the field, which would drop legitimate live
+  // entries — so filter in-memory (these collections are small).
+  return snapshot.docs.filter((doc) => !doc.data().deletedAt).map(publicData);
 }
 
 async function sendAdminEmail(contact) {

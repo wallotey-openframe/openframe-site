@@ -10,8 +10,12 @@ service cloud.firestore {
       return signedIn() && request.auth.token.admin == true;
     }
 
+    function notTrashed() {
+      return !("deletedAt" in resource.data) || resource.data.deletedAt == null;
+    }
+
     function published() {
-      return resource.data.status == "published";
+      return resource.data.status == "published" && notTrashed();
     }
 
     match /contacts/{contactId} {

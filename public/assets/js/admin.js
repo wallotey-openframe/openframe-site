@@ -461,7 +461,14 @@ function renderBodyPreview() {
     return;
   }
   try {
-    bodyPreview.innerHTML = marked.parse(value, { breaks: true, gfm: true });
+    const raw = marked.parse(value, { breaks: true, gfm: true });
+    // Sanitize before injecting. Falls back to plain text if DOMPurify
+    // hasn't loaded yet, so unsanitized HTML is never written.
+    if (typeof DOMPurify !== "undefined") {
+      bodyPreview.innerHTML = DOMPurify.sanitize(raw);
+    } else {
+      bodyPreview.textContent = value;
+    }
   } catch (err) {
     bodyPreview.textContent = `Preview error: ${err.message}`;
   }
