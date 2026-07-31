@@ -40,7 +40,8 @@ const storage = getStorage(app);
 const PAGE_SIZE = 25;
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const ALLOWED_UPLOAD_PREFIX = ["image/", "video/", "application/pdf"];
-const TABS = ["overview", "contacts", "cms", "media", "admins"];
+const TABS = ["overview", "contacts", "cms", "media", "admins", "activity"];
+const ACTIVITY_PAGE_SIZE = 40;
 
 /* =========================================================================
    DOM
@@ -53,6 +54,7 @@ const appShell = $("#app-shell");
 const loginForm = $("#login-form");
 const loginStatus = $("#login-status");
 const togglePassword = $("#toggle-password");
+const themeToggle = $("#theme-toggle");
 
 const sidebar = $("#sidebar");
 const sidebarNav = $("#sidebar-nav");
@@ -89,6 +91,12 @@ const clearFormBtn = $("#clear-form");
 const newEntryBtn = $("#new-entry");
 const pickImageBtn = $("#pick-image");
 const cmsSearch = $("#cms-search");
+const cmsFilter = $("#cms-filter");
+const mediaFilter = $("#media-filter");
+
+const activityList = $("#activity-list");
+const activityFilter = $("#activity-filter");
+const activityLoadMore = $("#activity-load-more");
 
 const uploadForm = $("#upload-form");
 const uploadStatus = $("#upload-status");
@@ -137,7 +145,11 @@ let mediaCache = [];
 let selectedContactIds = new Set();
 let commandIndex = 0;
 let commandResults = [];
-let unsub = { contacts: null, pages: null, posts: null, work: null, media: null };
+let unsub = { contacts: null, pages: null, posts: null, work: null, media: null, activity: null };
+
+let activityCache = [];
+let activityCursor = null;
+let activityExhausted = false;
 
 /* =========================================================================
    UTILS
@@ -253,6 +265,55 @@ function setStatus(node, message, variant = "") {
 }
 
 /* =========================================================================
+   ACTIVITY LOG — fire-and-forget append
+   ========================================================================= */
+async function logActivity(action, resourceType, resourceId, details = {}) {
+  if (!currentUser) return;
+  try {
+    await setDoc(doc(collection(db, "activity")), {
+      action,               // e.g. "delete", "restore", "publish"
+      resourceType,         // "contacts" | "pages" | "posts" | "work" | "media" | "admins"
+      resourceId,           // doc id or uid
+      details,              // arbitrary context payload
+      actorUid: currentUser.uid,
+      actorEmail: currentUser.email || null,
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    // Non-critical — never block the primary mutation on a log write.
+    console.warn("Activity log failed", err);
+  }
+}
+
+/* =========================================================================
+   SOFT DELETE / RESTORE — used across contacts, cms, media
+   ========================================================================= */
+function isTrashed(snap) {
+  return !!snap.data()?.deletedAt;
+}
+
+async function softDelete(collectionName, id, title) {
+  await updateDoc(doc(db, collectionName, id), {
+    deletedAt: serverTimestamp(),
+    deletedBy: currentUser?.uid || null,
+  });
+  logActivity("delete", collectionName, id, { title: title || null });
+}
+
+async function restore(collectionName, id, title) {
+  await updateDoc(doc(db, collectionName, id), {
+    deletedAt: null,
+    deletedBy: null,
+  });
+  logActivity("restore", collectionName, id, { title: title || null });
+}
+
+async function permanentDelete(collectionName, id, title) {
+  await deleteDoc(doc(db, collectionName, id));
+  logActivity("permanent-delete", collectionName, id, { title: title || null });
+}
+
+/* =========================================================================
    CONFIRM MODAL — Promise-based
    ========================================================================= */
 function openConfirm({ title, body, confirmText = "Confirm", danger = true, typed = false }) {
@@ -341,6 +402,109 @@ async function authFetch(path, opts = {}) {
 }
 
 /* =========================================================================
+   THEME (light / dark)
+   ========================================================================= */
+function applyTheme(theme) {
+  if (theme === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+  themeToggle?.setAttribute(
+    "aria-label",
+    theme === "dark" ? "Switch to light mode" : "Switch to dark mode",
+  );
+}
+
+(function initTheme() {
+  let saved;
+  try {
+    saved = localStorage.getItem("of:admin-theme");
+  } catch {}
+  if (saved === "light" || saved === "dark") {
+    applyTheme(saved);
+    return;
+  }
+  // First visit — honour the OS preference.
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  applyTheme(prefersDark ? "dark" : "light");
+})();
+
+themeToggle?.addEventListener("click", () => {
+  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try {
+    localStorage.setItem("of:admin-theme", next);
+  } catch {}
+});
+
+/* =========================================================================
+   MARKDOWN EDITOR — Edit / Split / Preview tabs + live render
+   ========================================================================= */
+const bodyTextarea = $("#body-textarea");
+const bodyPreview = $("#body-preview");
+const mdEditor = $("#md-editor");
+const mdPanes = mdEditor?.querySelector(".md-panes");
+
+function renderBodyPreview() {
+  if (!bodyTextarea || !bodyPreview) return;
+  const value = bodyTextarea.value.trim();
+  if (!value) {
+    bodyPreview.innerHTML = "";
+    bodyPreview.appendChild(
+      el("p", { class: "md-preview-empty", text: "Nothing to preview yet." }),
+    );
+    return;
+  }
+  if (typeof marked === "undefined") {
+    bodyPreview.textContent = value;
+    return;
+  }
+  try {
+    const raw = marked.parse(value, { breaks: true, gfm: true });
+    // Sanitize before injecting. Falls back to plain text if DOMPurify
+    // hasn't loaded yet, so unsanitized HTML is never written.
+    if (typeof DOMPurify !== "undefined") {
+      bodyPreview.innerHTML = DOMPurify.sanitize(raw);
+    } else {
+      bodyPreview.textContent = value;
+    }
+  } catch (err) {
+    bodyPreview.textContent = `Preview error: ${err.message}`;
+  }
+}
+
+function setMdMode(mode) {
+  if (!mdPanes) return;
+  mdPanes.dataset.mode = mode;
+  mdEditor.querySelectorAll(".md-tab").forEach((btn) => {
+    const isActive = btn.dataset.md === mode;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  try {
+    localStorage.setItem("of:admin-md-mode", mode);
+  } catch {}
+  if (mode !== "edit") renderBodyPreview();
+}
+
+if (mdEditor) {
+  mdEditor.querySelectorAll(".md-tab").forEach((btn) => {
+    btn.addEventListener("click", () => setMdMode(btn.dataset.md));
+  });
+  bodyTextarea?.addEventListener("input", () => {
+    if (mdPanes?.dataset.mode !== "edit") renderBodyPreview();
+  });
+  // Restore previous mode (default to edit)
+  let savedMode = "edit";
+  try {
+    const saved = localStorage.getItem("of:admin-md-mode");
+    if (saved === "split" || saved === "preview") savedMode = saved;
+  } catch {}
+  setMdMode(savedMode);
+}
+
+/* =========================================================================
    LOGIN
    ========================================================================= */
 togglePassword.addEventListener("click", () => {
@@ -406,24 +570,25 @@ openSidebarBtn?.addEventListener("click", () => sidebar.classList.toggle("is-ope
    OVERVIEW
    ========================================================================= */
 function renderOverview() {
-  const unread = contactsCache.filter((s) => (s.data().status || "unread") === "unread").length;
+  const activeContacts = contactsCache.filter((s) => !isTrashed(s));
+  const unread = activeContacts.filter((s) => (s.data().status || "unread") === "unread").length;
   statUnread.textContent = unread;
-  statUnreadMeta.textContent = unread === 0 ? "All caught up" : `Out of ${contactsCache.length} loaded`;
+  statUnreadMeta.textContent = unread === 0 ? "All caught up" : `Out of ${activeContacts.length} loaded`;
 
   const allCms = [
     ...collectionsCache.pages,
     ...collectionsCache.posts,
     ...collectionsCache.work,
-  ];
+  ].filter((s) => !isTrashed(s));
   const drafts = allCms.filter((s) => (s.data().status || "draft") !== "published").length;
   const published = allCms.filter((s) => s.data().status === "published").length;
   statDrafts.textContent = drafts;
   statPublished.textContent = published;
-  statMedia.textContent = mediaCache.length;
+  statMedia.textContent = mediaCache.filter((s) => !isTrashed(s)).length;
 
-  // Recent submissions
+  // Recent submissions (excluding trash)
   clear(overviewContactsList);
-  const recent = contactsCache.slice(0, 5);
+  const recent = activeContacts.slice(0, 5);
   if (recent.length === 0) {
     renderEmpty(overviewContactsList, "No submissions yet.");
   } else {
@@ -556,54 +721,99 @@ function renderContactItem(snap) {
 
   const body = el("p", { class: "item-body", text: data.message || "" });
 
+  const trashed = isTrashed(snap);
   const actions = el("div", { class: "item-actions" });
-  if (data.email) {
-    actions.appendChild(
-      el("a", {
-        class: "ghost",
-        attrs: {
-          href: `mailto:${data.email}?subject=${encodeURIComponent("Re: your brief")}&body=${encodeURIComponent(`Hi ${data.name || ""},\n\n`)}`,
-          role: "button",
-        },
-        text: "Reply",
-      }),
-    );
-  }
-  actions.appendChild(
-    el("button", {
-      class: "ghost",
-      text: status === "unread" ? "Mark read" : "Mark unread",
-      attrs: { type: "button" },
-      on: { click: () => updateContactStatus(snap.id, status === "unread" ? "read" : "unread") },
-    }),
-  );
-  if (status !== "archived") {
-    actions.appendChild(
-      el("button", {
-        class: "ghost",
-        text: "Archive",
-        attrs: { type: "button" },
-        on: { click: () => archiveContactWithUndo(snap) },
-      }),
-    );
-  } else {
+  if (trashed) {
     actions.appendChild(
       el("button", {
         class: "ghost",
         text: "Restore",
         attrs: { type: "button" },
-        on: { click: () => updateContactStatus(snap.id, "read") },
+        on: {
+          click: async () => {
+            try {
+              await restore("contacts", snap.id, data.name);
+              toast("Restored.", "success");
+            } catch (err) {
+              toast(`Restore failed: ${err.message}`, "error");
+            }
+          },
+        },
+      }),
+    );
+    actions.appendChild(
+      el("button", {
+        class: "danger",
+        text: "Delete permanently",
+        attrs: { type: "button" },
+        on: {
+          click: async () => {
+            const ok = await openConfirm({
+              title: `Permanently delete "${data.name || "Anonymous"}"?`,
+              body: "This cannot be undone.",
+              confirmText: "Delete permanently",
+              typed: "DELETE",
+            });
+            if (!ok) return;
+            try {
+              await permanentDelete("contacts", snap.id, data.name);
+              toast("Permanently deleted.", "success");
+            } catch (err) {
+              toast(`Delete failed: ${err.message}`, "error");
+            }
+          },
+        },
+      }),
+    );
+  } else {
+    if (data.email) {
+      actions.appendChild(
+        el("a", {
+          class: "ghost",
+          attrs: {
+            href: `mailto:${data.email}?subject=${encodeURIComponent("Re: your brief")}&body=${encodeURIComponent(`Hi ${data.name || ""},\n\n`)}`,
+            role: "button",
+          },
+          text: "Reply",
+        }),
+      );
+    }
+    actions.appendChild(
+      el("button", {
+        class: "ghost",
+        text: status === "unread" ? "Mark read" : "Mark unread",
+        attrs: { type: "button" },
+        on: { click: () => updateContactStatus(snap.id, status === "unread" ? "read" : "unread") },
+      }),
+    );
+    if (status !== "archived") {
+      actions.appendChild(
+        el("button", {
+          class: "ghost",
+          text: "Archive",
+          attrs: { type: "button" },
+          on: { click: () => archiveContactWithUndo(snap) },
+        }),
+      );
+    } else {
+      actions.appendChild(
+        el("button", {
+          class: "ghost",
+          text: "Unarchive",
+          attrs: { type: "button" },
+          on: { click: () => updateContactStatus(snap.id, "read") },
+        }),
+      );
+    }
+    actions.appendChild(
+      el("button", {
+        class: "danger",
+        text: "Delete",
+        attrs: { type: "button" },
+        on: { click: () => deleteContactWithUndo(snap) },
       }),
     );
   }
-  actions.appendChild(
-    el("button", {
-      class: "danger",
-      text: "Delete",
-      attrs: { type: "button" },
-      on: { click: () => deleteContactWithUndo(snap) },
-    }),
-  );
 
   item.appendChild(checkbox);
   item.appendChild(head);
@@ -616,6 +826,7 @@ function renderContactItem(snap) {
 async function updateContactStatus(id, status) {
   try {
     await updateDoc(doc(db, "contacts", id), { status });
+    logActivity("status", "contacts", id, { status });
   } catch (err) {
     toast(`Could not update: ${err.message}`, "error");
   }
@@ -625,6 +836,7 @@ async function archiveContactWithUndo(snap) {
   const prevStatus = snap.data().status || "unread";
   try {
     await updateDoc(doc(db, "contacts", snap.id), { status: "archived" });
+    logActivity("archive", "contacts", snap.id, { title: snap.data().name });
     toast("Archived.", "success", {
       undo: () => updateDoc(doc(db, "contacts", snap.id), { status: prevStatus }),
     });
@@ -636,12 +848,9 @@ async function archiveContactWithUndo(snap) {
 async function deleteContactWithUndo(snap) {
   const data = snap.data();
   try {
-    await deleteDoc(doc(db, "contacts", snap.id));
-    toast(`Deleted "${data.name || "Anonymous"}".`, "success", {
-      undo: () =>
-        setDoc(doc(db, "contacts", snap.id), data, { merge: false }).catch(() =>
-          toast("Could not restore — too late.", "error"),
-        ),
+    await softDelete("contacts", snap.id, data.name);
+    toast(`Moved "${data.name || "Anonymous"}" to trash.`, "success", {
+      undo: () => restore("contacts", snap.id, data.name),
       timeout: 6000,
     });
   } catch (err) {
@@ -662,7 +871,13 @@ function filterContacts() {
   const status = contactsFilter.value;
   return contactsCache.filter((snap) => {
     const data = snap.data();
-    if (status !== "all" && (data.status || "unread") !== status) return false;
+    const trashed = !!data.deletedAt;
+    if (status === "trashed") {
+      if (!trashed) return false;
+    } else {
+      if (trashed) return false;
+      if (status !== "all" && (data.status || "unread") !== status) return false;
+    }
     if (!q) return true;
     return [data.name, data.email, data.company, data.message]
       .filter(Boolean)
@@ -672,7 +887,9 @@ function filterContacts() {
 
 function renderContacts() {
   const filtered = filterContacts();
-  const unread = contactsCache.filter((s) => (s.data().status || "unread") === "unread").length;
+  const unread = contactsCache.filter(
+    (s) => !isTrashed(s) && (s.data().status || "unread") === "unread",
+  ).length;
   if (unread > 0) {
     contactsBadge.textContent = unread;
     contactsBadge.hidden = false;
@@ -779,14 +996,16 @@ bulkArchive.addEventListener("click", async () => {
 bulkDelete.addEventListener("click", async () => {
   const ids = [...selectedContactIds];
   const ok = await openConfirm({
-    title: `Delete ${ids.length} submission${ids.length === 1 ? "" : "s"}?`,
-    body: "This cannot be undone after a few seconds.",
-    confirmText: "Delete",
-    typed: ids.length >= 5 ? "DELETE" : false,
+    title: `Move ${ids.length} submission${ids.length === 1 ? "" : "s"} to trash?`,
+    body: "You can restore them from the Trashed filter.",
+    confirmText: "Move to trash",
   });
   if (!ok) return;
-  await Promise.allSettled(ids.map((id) => deleteDoc(doc(db, "contacts", id))));
-  toast(`${ids.length} deleted.`, "success");
+  await Promise.allSettled(ids.map((id) => softDelete("contacts", id)));
+  toast(`${ids.length} moved to trash.`, "success", {
+    undo: () => Promise.allSettled(ids.map((id) => restore("contacts", id))),
+    timeout: 6000,
+  });
   selectedContactIds.clear();
   renderContacts();
 });
@@ -859,37 +1078,87 @@ function renderCmsItem(snap, collectionName) {
       })
     : null;
 
-  const actions = el(
-    "div",
-    { class: "item-actions" },
-    el("button", {
-      class: "ghost",
-      attrs: { type: "button" },
-      text: "Edit",
-      on: { click: () => loadIntoEditor(snap, collectionName) },
-    }),
-    el("button", {
-      class: "ghost",
-      attrs: { type: "button" },
-      text: status === "published" ? "Unpublish" : "Publish",
-      on: {
-        click: () =>
-          togglePublish(snap.id, collectionName, status === "published" ? "draft" : "published"),
-      },
-    }),
-    el("button", {
-      class: "ghost",
-      attrs: { type: "button" },
-      text: "Duplicate",
-      on: { click: () => duplicateEntry(snap, collectionName) },
-    }),
-    el("button", {
-      class: "danger",
-      attrs: { type: "button" },
-      text: "Delete",
-      on: { click: () => deleteCms(snap.id, collectionName, data.title) },
-    }),
-  );
+  const trashed = isTrashed(snap);
+  const actions = el("div", { class: "item-actions" });
+  if (trashed) {
+    actions.appendChild(
+      el("button", {
+        class: "ghost",
+        attrs: { type: "button" },
+        text: "Restore",
+        on: {
+          click: async () => {
+            try {
+              await restore(collectionName, snap.id, data.title);
+              toast("Restored.", "success");
+            } catch (err) {
+              toast(`Restore failed: ${err.message}`, "error");
+            }
+          },
+        },
+      }),
+    );
+    actions.appendChild(
+      el("button", {
+        class: "danger",
+        attrs: { type: "button" },
+        text: "Delete permanently",
+        on: {
+          click: async () => {
+            const ok = await openConfirm({
+              title: `Permanently delete "${data.title || snap.id}"?`,
+              body: "This cannot be undone.",
+              confirmText: "Delete permanently",
+              typed: "DELETE",
+            });
+            if (!ok) return;
+            try {
+              await permanentDelete(collectionName, snap.id, data.title);
+              toast("Permanently deleted.", "success");
+            } catch (err) {
+              toast(`Delete failed: ${err.message}`, "error");
+            }
+          },
+        },
+      }),
+    );
+  } else {
+    actions.appendChild(
+      el("button", {
+        class: "ghost",
+        attrs: { type: "button" },
+        text: "Edit",
+        on: { click: () => loadIntoEditor(snap, collectionName) },
+      }),
+    );
+    actions.appendChild(
+      el("button", {
+        class: "ghost",
+        attrs: { type: "button" },
+        text: status === "published" ? "Unpublish" : "Publish",
+        on: {
+          click: () =>
+            togglePublish(snap.id, collectionName, status === "published" ? "draft" : "published"),
+        },
+      }),
+    );
+    actions.appendChild(
+      el("button", {
+        class: "ghost",
+        attrs: { type: "button" },
+        text: "Duplicate",
+        on: { click: () => duplicateEntry(snap, collectionName) },
+      }),
+    );
+    actions.appendChild(
+      el("button", {
+        class: "danger",
+        attrs: { type: "button" },
+        text: "Delete",
+        on: { click: () => deleteCms(snap.id, collectionName, data.title) },
+      }),
+    );
+  }
 
   item.appendChild(head);
   item.appendChild(meta);
@@ -901,10 +1170,17 @@ function renderCmsItem(snap, collectionName) {
 function renderCollection(name, statusFilter) {
   const list = $(`#${name}-list`);
   const q = cmsSearch.value.trim().toLowerCase();
+  const effectiveFilter = statusFilter ?? (cmsFilter?.value || "all");
   const filtered = collectionsCache[name].filter((snap) => {
     const data = snap.data();
-    if (statusFilter === "drafts" && data.status === "published") return false;
-    if (statusFilter === "published" && data.status !== "published") return false;
+    const trashed = !!data.deletedAt;
+    if (effectiveFilter === "trashed") {
+      if (!trashed) return false;
+    } else {
+      if (trashed) return false;
+      if (effectiveFilter === "drafts" && data.status === "published") return false;
+      if (effectiveFilter === "published" && data.status !== "published") return false;
+    }
     if (!q) return true;
     return [snap.id, data.title, data.summary]
       .filter(Boolean)
@@ -950,6 +1226,7 @@ function loadIntoEditor(snap, collectionName) {
   contentForm.sortOrder.value = data.sortOrder ?? 0;
   editorMode.textContent = `Editing ${collectionName} / ${snap.id}`;
   contentForm.dataset.touchedSlug = "1"; // don't auto-fill slug from title
+  renderBodyPreview();
   contentForm.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -960,6 +1237,7 @@ async function togglePublish(id, collectionName, nextStatus) {
       updatedAt: serverTimestamp(),
       updatedBy: currentUser?.uid || null,
     });
+    logActivity(nextStatus === "published" ? "publish" : "unpublish", collectionName, id);
     toast(`${nextStatus === "published" ? "Published" : "Unpublished"}.`, "success");
   } catch (err) {
     toast(`Status update failed: ${err.message}`, "error");
@@ -985,15 +1263,17 @@ async function duplicateEntry(snap, collectionName) {
 
 async function deleteCms(id, collectionName, title) {
   const ok = await openConfirm({
-    title: `Delete "${title || id}"?`,
-    body: `From the ${collectionName} collection. This cannot be undone.`,
-    confirmText: "Delete",
-    typed: "DELETE",
+    title: `Move "${title || id}" to trash?`,
+    body: `You can restore it from the Trashed filter. Nothing is permanently deleted yet.`,
+    confirmText: "Move to trash",
   });
   if (!ok) return;
   try {
-    await deleteDoc(doc(db, collectionName, id));
-    toast("Entry deleted.", "success");
+    await softDelete(collectionName, id, title);
+    toast(`"${title || id}" moved to trash.`, "success", {
+      undo: () => restore(collectionName, id, title),
+      timeout: 6000,
+    });
   } catch (err) {
     toast(`Delete failed: ${err.message}`, "error");
   }
@@ -1004,6 +1284,7 @@ function resetEditor() {
   contentForm.sortOrder.value = 0;
   editorMode.textContent = "New entry";
   delete contentForm.dataset.touchedSlug;
+  renderBodyPreview();
 }
 
 clearFormBtn.addEventListener("click", resetEditor);
@@ -1011,11 +1292,15 @@ newEntryBtn.addEventListener("click", () => {
   resetEditor();
   contentForm.scrollIntoView({ behavior: "smooth", block: "start" });
 });
-cmsSearch.addEventListener("input", () => {
+function renderAllCollections() {
   renderCollection("pages");
   renderCollection("posts");
   renderCollection("work");
-});
+}
+
+cmsSearch.addEventListener("input", renderAllCollections);
+cmsFilter?.addEventListener("change", renderAllCollections);
+mediaFilter?.addEventListener("change", renderMedia);
 
 // Auto-slug from title
 contentForm.title.addEventListener("input", () => {
@@ -1036,6 +1321,8 @@ contentForm.addEventListener("submit", async (event) => {
     setStatus(contentStatus, "Slug is required.", "error");
     return;
   }
+  const existing = collectionsCache[collectionName]?.find((s) => s.id === id);
+  const action = existing ? "update" : "create";
   try {
     await setDoc(
       doc(db, collectionName, id),
@@ -1051,6 +1338,7 @@ contentForm.addEventListener("submit", async (event) => {
       },
       { merge: true },
     );
+    logActivity(action, collectionName, id, { title: data.title.trim() });
     setStatus(contentStatus, "Saved.", "success");
     toast("Content saved.", "success");
     editorMode.textContent = `Editing ${collectionName} / ${id}`;
@@ -1123,6 +1411,48 @@ function renderMediaItem(snap, opts = {}) {
         },
       }),
     );
+  } else if (isTrashed(snap)) {
+    actions.appendChild(
+      el("button", {
+        class: "ghost",
+        attrs: { type: "button" },
+        text: "Restore",
+        on: {
+          click: async () => {
+            try {
+              await restore("media", snap.id, data.name);
+              toast("Restored.", "success");
+            } catch (err) {
+              toast(`Restore failed: ${err.message}`, "error");
+            }
+          },
+        },
+      }),
+    );
+    actions.appendChild(
+      el("button", {
+        class: "danger",
+        attrs: { type: "button" },
+        text: "Delete permanently",
+        on: {
+          click: async () => {
+            const ok = await openConfirm({
+              title: `Permanently delete "${data.name || snap.id}"?`,
+              body: "Metadata is removed. The Storage file remains.",
+              confirmText: "Delete permanently",
+              typed: "DELETE",
+            });
+            if (!ok) return;
+            try {
+              await permanentDelete("media", snap.id, data.name);
+              toast("Permanently deleted.", "success");
+            } catch (err) {
+              toast(`Delete failed: ${err.message}`, "error");
+            }
+          },
+        },
+      }),
+    );
   } else {
     actions.appendChild(
       el("button", {
@@ -1140,13 +1470,16 @@ function renderMediaItem(snap, opts = {}) {
 
 function renderMedia() {
   const q = mediaSearch.value.trim().toLowerCase();
+  const view = mediaFilter?.value || "all";
   const filtered = mediaCache.filter((snap) => {
+    const trashed = isTrashed(snap);
+    if (view === "trashed" ? !trashed : trashed) return false;
     if (!q) return true;
     return (snap.data().name || "").toLowerCase().includes(q);
   });
   const list = $("#media-list");
   if (filtered.length === 0) {
-    renderEmpty(list, q ? "No matches." : "No uploads yet.");
+    renderEmpty(list, q ? "No matches." : view === "trashed" ? "Trash is empty." : "No uploads yet.");
   } else {
     clear(list);
     filtered.forEach((snap) => list.appendChild(renderMediaItem(snap)));
@@ -1174,14 +1507,17 @@ function subscribeMedia() {
 
 async function deleteMedia(id, name) {
   const ok = await openConfirm({
-    title: `Delete "${name || id}"?`,
-    body: "Removes the metadata. The underlying file in Storage remains.",
-    confirmText: "Delete",
+    title: `Move "${name || id}" to trash?`,
+    body: "The Storage file is untouched. You can restore from the Trashed filter.",
+    confirmText: "Move to trash",
   });
   if (!ok) return;
   try {
-    await deleteDoc(doc(db, "media", id));
-    toast("Upload record deleted.", "success");
+    await softDelete("media", id, name);
+    toast(`"${name || id}" moved to trash.`, "success", {
+      undo: () => restore("media", id, name),
+      timeout: 6000,
+    });
   } catch (err) {
     toast(`Delete failed: ${err.message}`, "error");
   }
@@ -1452,6 +1788,122 @@ inviteGo.addEventListener("click", async () => {
 });
 
 /* =========================================================================
+   ACTIVITY LOG
+   ========================================================================= */
+const VERB_CLASS = {
+  create: "create",
+  update: "update",
+  publish: "create",
+  unpublish: "update",
+  archive: "update",
+  status: "update",
+  restore: "create",
+  delete: "destructive",
+  "permanent-delete": "destructive",
+  "admin-grant": "create",
+  "admin-revoke": "destructive",
+  "admin-disable": "destructive",
+  "admin-enable": "create",
+  "admin-invite": "create",
+  "password-reset": "update",
+};
+
+function renderActivityItem(snap) {
+  const d = snap.data();
+  const verb = String(d.action || "action").replace(/-/g, " ");
+  const item = el("article", { class: "activity-item" });
+  item.appendChild(
+    el("span", {
+      class: "activity-time",
+      text: relativeTime(d.createdAt),
+      attrs: { title: absoluteTime(d.createdAt) },
+    }),
+  );
+  const text = el("div", { class: "activity-text" });
+  const actor = d.actorEmail || d.actorUid || "someone";
+  const target = d.details?.title ? `"${d.details.title}"` : d.resourceId || "";
+  text.appendChild(el("strong", { text: actor }));
+  text.appendChild(document.createTextNode(` ${verb} ${d.resourceType || ""}${target ? " " + target : ""}`));
+  if (d.details?.status) {
+    text.appendChild(el("small", { text: `status → ${d.details.status}` }));
+  }
+  item.appendChild(text);
+  const cls = VERB_CLASS[d.action] || "";
+  item.appendChild(el("span", { class: `activity-verb ${cls}`, text: verb }));
+  return item;
+}
+
+function filterActivity() {
+  const view = activityFilter?.value || "all";
+  if (view === "all") return activityCache;
+  return activityCache.filter((s) => {
+    const rt = s.data().resourceType;
+    if (view === "admins") return rt === "admins" || (rt || "").startsWith("admin");
+    return rt === view;
+  });
+}
+
+function renderActivity() {
+  const list = filterActivity();
+  if (list.length === 0) {
+    renderEmpty(activityList, "No activity yet.");
+    return;
+  }
+  clear(activityList);
+  list.forEach((snap) => activityList.appendChild(renderActivityItem(snap)));
+}
+
+function subscribeActivity() {
+  renderSkeleton(activityList, 3);
+  if (unsub.activity) unsub.activity();
+  const q = query(
+    collection(db, "activity"),
+    orderBy("createdAt", "desc"),
+    limit(ACTIVITY_PAGE_SIZE),
+  );
+  unsub.activity = onSnapshot(
+    q,
+    (snap) => {
+      activityCache = snap.docs;
+      activityCursor = snap.docs[snap.docs.length - 1] || null;
+      activityExhausted = snap.docs.length < ACTIVITY_PAGE_SIZE;
+      activityLoadMore.hidden = activityExhausted;
+      renderActivity();
+    },
+    (err) => {
+      renderEmpty(activityList, `Could not load activity: ${err.message}`);
+    },
+  );
+}
+
+async function loadMoreActivity() {
+  if (!activityCursor || activityExhausted) return;
+  activityLoadMore.disabled = true;
+  try {
+    const snap = await getDocs(
+      query(
+        collection(db, "activity"),
+        orderBy("createdAt", "desc"),
+        startAfter(activityCursor),
+        limit(ACTIVITY_PAGE_SIZE),
+      ),
+    );
+    activityCache = activityCache.concat(snap.docs);
+    activityCursor = snap.docs[snap.docs.length - 1] || activityCursor;
+    activityExhausted = snap.docs.length < ACTIVITY_PAGE_SIZE;
+    activityLoadMore.hidden = activityExhausted;
+    renderActivity();
+  } catch (err) {
+    toast(`Could not load more: ${err.message}`, "error");
+  } finally {
+    activityLoadMore.disabled = false;
+  }
+}
+
+activityFilter?.addEventListener("change", renderActivity);
+activityLoadMore?.addEventListener("click", loadMoreActivity);
+
+/* =========================================================================
    COMMAND PALETTE
    ========================================================================= */
 function getCommandItems() {
@@ -1659,5 +2111,6 @@ onAuthStateChanged(auth, async (user) => {
   subscribeCollection("posts");
   subscribeCollection("work");
   subscribeMedia();
+  subscribeActivity();
   loadAdmins();
 });

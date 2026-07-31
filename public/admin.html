@@ -12,6 +12,25 @@
     />
     <link rel="stylesheet" href="https://use.typekit.net/blo8jyr.css" />
     <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
+    <script>
+      // Apply theme before paint to avoid a flash of light mode.
+      (function () {
+        try {
+          var saved = localStorage.getItem("of:admin-theme");
+          if (saved === "dark") {
+            document.documentElement.setAttribute("data-theme", "dark");
+          } else if (
+            !saved &&
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches
+          ) {
+            document.documentElement.setAttribute("data-theme", "dark");
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <!-- ===== LOGIN ===== -->
@@ -93,6 +112,9 @@
           <button class="nav-item" data-tab="admins" type="button">
             <span class="nav-icon" aria-hidden="true">◈</span> Admins
           </button>
+          <button class="nav-item" data-tab="activity" type="button">
+            <span class="nav-icon" aria-hidden="true">⟳</span> Activity
+          </button>
         </nav>
 
         <div class="sidebar-foot">
@@ -103,6 +125,27 @@
             title="Command palette (⌘K)"
           >
             <span class="kbd">⌘K</span> Quick actions
+          </button>
+          <button
+            type="button"
+            class="ghost theme-toggle"
+            id="theme-toggle"
+            aria-label="Toggle dark mode"
+            title="Toggle theme"
+          >
+            <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
+            </svg>
+            <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="4" />
+              <path
+                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                fill="none"
+              />
+            </svg>
           </button>
           <div class="user-info">
             <span class="user-chip" id="user-chip"></span>
@@ -210,10 +253,11 @@
                 aria-label="Search contacts"
               />
               <select id="contacts-filter" aria-label="Filter by status">
-                <option value="all">All</option>
+                <option value="all">All active</option>
                 <option value="unread">Unread</option>
                 <option value="read">Read</option>
                 <option value="archived">Archived</option>
+                <option value="trashed">Trashed</option>
               </select>
               <button id="contacts-export" type="button" class="ghost">
                 Export CSV
@@ -259,6 +303,12 @@
                 placeholder="Search title or slug…"
                 aria-label="Search CMS"
               />
+              <select id="cms-filter" aria-label="Filter CMS view">
+                <option value="all">All active</option>
+                <option value="drafts">Drafts</option>
+                <option value="published">Published</option>
+                <option value="trashed">Trashed</option>
+              </select>
               <button id="new-entry" type="button" class="ghost">
                 + New entry
               </button>
@@ -298,10 +348,46 @@
               Summary
               <textarea name="summary"></textarea>
             </label>
-            <label class="full">
-              Body
-              <textarea name="body"></textarea>
-            </label>
+            <div class="full md-editor" id="md-editor">
+              <div class="md-editor-head">
+                <span class="md-editor-label">Body</span>
+                <div class="md-tabs" role="tablist" aria-label="Body editor mode">
+                  <button
+                    type="button"
+                    class="md-tab active"
+                    data-md="edit"
+                    role="tab"
+                    aria-selected="true"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="md-tab"
+                    data-md="split"
+                    role="tab"
+                    aria-selected="false"
+                  >
+                    Split
+                  </button>
+                  <button
+                    type="button"
+                    class="md-tab"
+                    data-md="preview"
+                    role="tab"
+                    aria-selected="false"
+                  >
+                    Preview
+                  </button>
+                </div>
+              </div>
+              <div class="md-panes" data-mode="edit">
+                <textarea name="body" id="body-textarea"></textarea>
+                <div class="md-preview" id="body-preview" aria-live="polite">
+                  <p class="md-preview-empty">Nothing to preview yet.</p>
+                </div>
+              </div>
+            </div>
             <label>
               Image URL
               <div class="image-row">
@@ -342,13 +428,19 @@
         <section class="tab" id="tab-media">
           <div class="section-head">
             <h2>Uploads</h2>
-            <input
-              class="search"
-              id="media-search"
-              type="search"
-              placeholder="Search file name…"
-              aria-label="Search uploads"
-            />
+            <div class="section-actions">
+              <input
+                class="search"
+                id="media-search"
+                type="search"
+                placeholder="Search file name…"
+                aria-label="Search uploads"
+              />
+              <select id="media-filter" aria-label="Filter uploads view">
+                <option value="all">All active</option>
+                <option value="trashed">Trashed</option>
+              </select>
+            </div>
           </div>
 
           <form class="editor card" id="upload-form">
@@ -387,6 +479,30 @@
             and edit all CMS entries. Be selective.
           </p>
           <div class="list" id="admins-list"></div>
+        </section>
+
+        <!-- ===== ACTIVITY ===== -->
+        <section class="tab" id="tab-activity">
+          <div class="section-head">
+            <h2>Activity</h2>
+            <div class="section-actions">
+              <select id="activity-filter" aria-label="Filter activity">
+                <option value="all">All actions</option>
+                <option value="cms">CMS</option>
+                <option value="contacts">Contacts</option>
+                <option value="media">Uploads</option>
+                <option value="admins">Admins</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint">
+            Immutable log of admin actions. Entries can be read but never edited
+            or deleted from this dashboard.
+          </p>
+          <div class="list" id="activity-list"></div>
+          <div class="list-footer">
+            <button id="activity-load-more" type="button" hidden>Load more</button>
+          </div>
         </section>
       </main>
     </div>
